@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Wudland</title>
+<style>
+  @font-face { font-family: 'Pixelify'; src: url(fonts/PixelifySans.ttf); font-weight: 400 700; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1214; overscroll-behavior: none; }
+  #c { position: fixed; left: 0; top: 0; image-rendering: pixelated; touch-action: none; will-change: transform; }
+  #ov { position: fixed; inset: 0; pointer-events: none; }
+  .tag {
+    position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .25s;
+    font: 600 13px/1 'Pixelify', ui-monospace, monospace; color: #3a2622; letter-spacing: .02em; white-space: nowrap;
+    background: #faf2de; padding: 5px 8px 6px; border: 2px solid #3a2622;
+    box-shadow: 0 2px 0 #3a262244; image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ov"></div>
+<script src="engine.js"></script>
+<script src="render.js"></script>
+<script src="build.js"></script>
+<script src="world.js"></script>
+<script src="interiors.js"></script>
+<script src="wares.js"></script>
+  <script src="more.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
