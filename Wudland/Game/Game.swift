@@ -54,9 +54,11 @@ final class Game: NSObject, WKScriptMessageHandler {
     }
 
     nonisolated func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-        let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
-        Task { @MainActor in self.handle(type, body: body, payload: payload) }
+        Task { @MainActor [weak self] in
+            guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+            let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data()
+            self?.handle(type, body: body, payload: payload)
+        }
     }
 
     private func handle(_ type: String, body: [String: Any], payload: Data) {
