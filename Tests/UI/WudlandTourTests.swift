@@ -12,7 +12,13 @@ final class WudlandTourTests: XCTestCase {
 
     override func setUp() { continueAfterFailure = false }
 
-    // MARK: plumbing
+    /// Attach a screenshot to the result bundle under a handy name (store screenshots are exported from there).
+    func snap(_ name: String) {
+        let a = XCTAttachment(screenshot: app.screenshot())
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+    }
 
     func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
 
@@ -78,21 +84,54 @@ final class WudlandTourTests: XCTestCase {
     }
 
     /// tap a villager, walking up to them first if they are off screen. Leaves the dialogue open.
+    /// Retries once with the camera reset to the player, since villagers wander.
     @discardableResult func talk(_ id: String) -> Bool {
-        for _ in 0..<40 {
-            idle()
-            if js("TOUR.talking()") == "true" { return true }
-            guard let a = json("TOUR.talkPt('\(id)')") as? [String: Any] else { return false }
-            if a["gone"] != nil { return false }
-            if (a["on"] as? Bool) == true, let x = a["x"] as? Double, let y = a["y"] as? Double {
-                tap(x, y)
-                if until(25, { js("TOUR.talking()") == "true" }) { _ = button("Say goodbye").waitForExistence(timeout: 5); return true }
-                js("TOUR.release('\(id)')")
-            } else if let x0 = a["x0"] as? Double, let y0 = a["y0"] as? Double {
-                if let s = json("TOUR.step(\(x0), \(y0))") as? [Double] { tap(s); pause(0.5) } else { pause(0.5) }
+        for attempt in 0..<2 {
+            if attempt > 0 {
+                js("TOUR.fly(['player'], 1400)")
+                _ = until(10) { js("TOUR.busy") == "false" }
+                pause(1.0)
+            }
+            for _ in 0..<40 {
+                idle()
+                if js("TOUR.talking()") == "true" { return true }
+                guard let a = json("TOUR.talkPt('\(id)')") as? [String: Any] else { return false }
+                if a["gone"] != nil { return false }
+                if (a["on"] as? Bool) == true, let x = a["x"] as? Double, let y = a["y"] as? Double {
+                    tap(x, y)
+                    if until(25, { js("TOUR.talking()") == "true" }) { _ = button("Say goodbye").waitForExistence(timeout: 5); return true }
+                    js("TOUR.release('\(id)')")
+                } else if let x0 = a["x0"] as? Double, let y0 = a["y0"] as? Double {
+                    if let s = json("TOUR.step(\(x0), \(y0))") as? [Double] { tap(s); pause(0.5) } else { pause(0.5) }
+                }
             }
         }
         return false
+    }
+
+    /// If the sim is a fresh install, walk the onboarding first (the tour used to assume an onboarded sim).
+    func walkOnboarding() {
+        guard app.buttons["Come in"].waitForExistence(timeout: 6) else { return }
+        mark("onboarding")
+        app.buttons["Come in"].tap()
+        for label in ["That's me", "Next"] {
+            let b = app.buttons[label]
+            if b.waitForExistence(timeout: 6) { b.tap(); pause(1.0) }
+        }
+        let ask = app.buttons["Ask me"]
+        if ask.waitForExistence(timeout: 6) { ask.tap() }
+        let yes = ["Allow Full Access", "Allow While Using App", "Allow", "OK"]
+        let deadline = Date().addingTimeInterval(40)
+        while Date() < deadline {
+            let alert = springboard.alerts.firstMatch
+            if alert.waitForExistence(timeout: 4) {
+                if let b = yes.lazy.map({ alert.buttons[$0] }).first(where: { $0.exists }) { b.tap() } else { alert.buttons.element(boundBy: alert.buttons.count - 1).tap() }
+                pause(1.0)
+            } else { break }
+        }
+        let later = app.buttons["Maybe later"]
+        if later.waitForExistence(timeout: 6) { later.tap() }
+        pause(1.5)
     }
 
     func closeTalk() {
@@ -166,26 +205,28 @@ final class WudlandTourTests: XCTestCase {
         app.launchArguments = ["-WudlandTour", "-lord.name", "Rowan", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         mark("launch")
+        walkOnboarding()
 
         // 1. first-launch permission prompts
         var answered = 0
         let yes = ["Allow Full Access", "Allow While Using App", "Allow", "OK"]
         while answered < 6 {
             let alert = springboard.alerts.firstMatch
-            guard alert.waitForExistence(timeout: answered == 0 ? 25 : 8) else { break }
+            guard alert.waitForExistence(timeout: answered == 0 ? 6 : 4) else { break }
             mark("permission prompt \(answered + 1)")
             pause(2.2)
             if let b = yes.lazy.map({ alert.buttons[$0] }).first(where: { $0.exists }) { b.tap() } else { alert.buttons.element(boundBy: alert.buttons.count - 1).tap() }
             answered += 1
             pause(1.0)
         }
-        XCTAssertGreaterThan(answered, 0)
+        // prompts may already be granted silently (XCTRun pre-approvals), so just wait for the channel
         XCTAssertTrue(until(60) { FileManager.default.fileExists(atPath: self.dir + "/ready") }, "channel ready")
         _ = until(30) { self.js("TOUR.scene()") == "village" }
         pause(2.5)
 
         // 2. the village: HUD, then a slow flight over the whole island
         mark("village home view")
+        snap("village")
         pause(2.0)
         for stop in [[-8.8, -23.0], [8.4, -23.5], [0.0, -1.0], [12.0, -3.0], [9.0, 8.6], [2.2, 15.2], [-7.4, 21.6], [-9.2, 7.2]] as [[Double]] {
             js("TOUR.fly([[\(stop[0]), \(stop[1])]], 3200)")
@@ -203,6 +244,7 @@ final class WudlandTourTests: XCTestCase {
 
         // 3. villagers out and about
         mark("villagers outdoors")
+        snap("villagers")
         converse("fennick", chips: ["What was I playing?"])
         converse("hilda", chips: ["I'm tired"])
         converse("barnaby", chips: ["Read me the news"], tab: "Notices", row: "Water the ferns")
@@ -215,6 +257,7 @@ final class WudlandTourTests: XCTestCase {
 
         // 4. notice board (reminders)
         mark("notice board")
+        snap("notice-board")
         let bw = json("TOUR.worldAt(3.4, 2.6)") as? [Double] ?? [0, 0]
         for _ in 0..<40 {
             idle()
@@ -232,18 +275,21 @@ final class WudlandTourTests: XCTestCase {
         // 5. buildings. The three HUD pills walk and open the post, bell tower and guild.
         // 5a. Raven Post
         mark("Raven Post")
+        snap("raven-post")
         enter("post", pick: 1, viaPill: "Unread letters")
         converse("pim", chips: ["What's important?"], tab: "Letters", row: "Lunch on Thursday")
         leaveBuilding()
 
         // 5b. Bell Tower (calendar)
         mark("Bell Tower")
+        snap("bell-tower")
         enter("bell", pick: 6, viaPill: "Events today")
         converse("tobias", chips: ["What's on today?"], tab: "Days", row: "Dentist")
         leaveBuilding()
 
         // 5c. Artificers' Guild
         mark("Artificers' Guild")
+        snap("guild")
         enter("guild", pick: 2, viaPill: "Agents at work")
         converse("gearwin", chips: ["Who's working now?"], tab: "Ledger", row: "Refactor the login")
         let ids = js("TOUR.ids()").split(separator: ",").map(String.init).filter { $0.hasPrefix("agent:") }
@@ -255,6 +301,7 @@ final class WudlandTourTests: XCTestCase {
 
         // 5d. The Gossiping Goose
         mark("Gossiping Goose")
+        snap("goose")
         enter("tavern", pick: 3)
         converse("mags", chips: ["Who's waiting on me?"], tab: "Tables", row: "Mina")
         let chats = js("TOUR.ids()").split(separator: ",").map(String.init).filter { $0.hasPrefix("chat:") }
@@ -266,14 +313,17 @@ final class WudlandTourTests: XCTestCase {
 
         // 5e. Odette's Curiosities
         mark("Odette's Curiosities")
+        snap("shop")
         enter("shop", pick: 7)
         converse("odette", chips: ["What's good today?"], wares: true)
         leaveBuilding()
 
         // 5f. The Wizard's Tower and the spellbook
         mark("Wizard's Tower")
+        snap("tower")
         enter("tower", pick: 5)
         mark("spellbook")
+        snap("spellbook")
         if talk("wizard") {
             pause(2.2)
             let field = app.textFields.firstMatch
@@ -293,9 +343,11 @@ final class WudlandTourTests: XCTestCase {
 
         // 5g. The Cottage: Biscuit, today's scroll and the mirror
         mark("The Cottage")
+        snap("cottage")
         enter("home", pick: 4)
         converse("biscuit", chips: ["How's my day looking?"])
         mark("today's scroll")
+        snap("scroll")
         for _ in 0..<20 {
             idle()
             if let p = json("TOUR.pickPt(91)") as? [Double] { tap(p); break } else { pause(0.5) }
@@ -307,6 +359,7 @@ final class WudlandTourTests: XCTestCase {
         pause(1.6)
         closeCard()
         mark("mirror")
+        snap("mirror")
         for _ in 0..<20 {
             idle()
             if let p = json("TOUR.pickPt(92)") as? [Double] { tap(p); break } else { pause(0.5) }
@@ -317,6 +370,7 @@ final class WudlandTourTests: XCTestCase {
 
         // 6. HUD: satchel, then Settings
         mark("satchel")
+        snap("satchel")
         let satchel = button("Satchel")
         if satchel.waitForExistence(timeout: 4) { satchel.tap(); pause(2.6); closeCard() }
         mark("settings")
@@ -328,13 +382,14 @@ final class WudlandTourTests: XCTestCase {
             pause(k == 1 ? 3.2 : 1.8)   // the second stop is the Link a computer token
             win.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
                 .press(forDuration: 0.05, thenDragTo: win.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.34)), withVelocity: .slow, thenHoldForDuration: 0.4)
-            if k == 0 { mark("settings link a computer") }
+            if k == 0 { mark("settings link a computer"); snap("settings-link") }
         }
         pause(2.0)
         closeCard()
 
         // 7. closing shot
         mark("closing")
+        snap("closing")
         js("TOUR.fly([[0, 0], 'player'], 3000)"); _ = until(15) { self.js("TOUR.busy") == "false" }
         pause(3.0)
         mark("end")
