@@ -21,10 +21,12 @@ final class Conversation {
     @ObservationIgnored var onSpeaking: ((Bool) -> Void)?
 
     static var modelReady: Bool {
+        if TourMode.on { return false }
         if case .available = SystemLanguageModel.default.availability { return true }
         return false
     }
     static var modelProblem: String? {
+        if TourMode.on { return nil }
         switch SystemLanguageModel.default.availability {
         case .available: return nil
         case .unavailable(.appleIntelligenceNotEnabled): return "Turn on Apple Intelligence to let the villagers think for themselves."
@@ -74,7 +76,7 @@ final class Conversation {
         lines.append(Line(joe: true, text: label))
         lines.append(Line(joe: false, text: ""))
         let prompt = "\(ask)\n\nMATERIAL (real, quote names exactly):\n\(material.prefix(2800))"
-        speak(scripted: Self.digest(material), prompt: prompt)
+        speak(scripted: TourMode.on ? TourMode.digest(label, material) : Self.digest(material), prompt: prompt)
     }
 
     func stop() { task?.cancel(); task = nil; setSpeaking(false); onSpeaking = nil; thinking = false }
@@ -139,6 +141,7 @@ final class Conversation {
     }
 
     private func fallbackAnswer(_ q: String) -> String {
+        if TourMode.on, let r = TourMode.reply(villager.id, q) { return r }
         let lower = q.lowercased()
         let first = villager.facts.split(separator: "\n").first.map(String.init) ?? ""
         if lower.contains("ignore") || lower.contains("important") || lower.contains("who") || lower.contains("what") || lower.contains("today") || lower.contains("news") {

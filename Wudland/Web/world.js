@@ -332,7 +332,35 @@ function makeNav(scene, walkable, cost) {
     const x = x0 + (i + .5) * cs, y = y0 + (j + .5) * cs;
     if (walkable(x, y)) { ok[j * nx + i] = 1; w[j * nx + i] = cost ? cost(x, y) : 1; }
   }
+  keepLargestRegion(ok, nx, ny);
   return { x0, y0, cs, nx, ny, ok, w };
+}
+// walkable pockets cut off from the main ground (behind a building, inside a ring of rocks) would strand
+// anyone placed there, so only the largest connected region stays walkable; doors and taps snap onto it
+function keepLargestRegion(ok, nx, ny) {
+  const label = new Int32Array(nx * ny), sizes = [0], stack = [];
+  for (let s = 0; s < nx * ny; s++) {
+    if (ok[s] !== 1 || label[s]) continue;
+    const id = sizes.length; let n = 0;
+    label[s] = id; stack.push(s);
+    while (stack.length) {
+      const c = stack.pop(); n++;
+      const cx = c % nx, cy = (c / nx) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const i = cx + dx, j = cy + dy;
+        if ((!dx && !dy) || i < 0 || j < 0 || i >= nx || j >= ny) continue;
+        const k = j * nx + i;
+        if (ok[k] !== 1 || label[k]) continue;
+        // diagonal moves need both side cells open, matching findPath
+        if (dx && dy && (ok[cy * nx + i] !== 1 || ok[j * nx + cx] !== 1)) continue;
+        label[k] = id; stack.push(k);
+      }
+    }
+    sizes.push(n);
+  }
+  let best = 1;
+  for (let id = 2; id < sizes.length; id++) if (sizes[id] > sizes[best]) best = id;
+  for (let k = 0; k < ok.length; k++) if (ok[k] === 1 && label[k] !== best) ok[k] = 0;
 }
 function navCell(nav, x, y) { return [Math.floor((x - nav.x0) / nav.cs), Math.floor((y - nav.y0) / nav.cs)]; }
 function navOk(nav, i, j) { return i >= 0 && j >= 0 && i < nav.nx && j < nav.ny && nav.ok[j * nav.nx + i] === 1; }

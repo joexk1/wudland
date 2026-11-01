@@ -102,6 +102,14 @@ struct SpellbookView: View {
             .defaultScrollAnchor(.bottom)
             .onChange(of: book.pages.count) { withAnimation(.smooth) { proxy.scrollTo("end", anchor: .bottom) } }
             .onChange(of: book.casting) { withAnimation(.smooth) { proxy.scrollTo("end", anchor: .bottom) } }
+            .alert(book.confirmTitle, isPresented: Binding(
+                get: { !book.confirmText.isEmpty },
+                set: { if !$0 { book.cancelCast() } })) {
+                Button("Cast") { book.confirmCast() }
+                Button("Not yet", role: .cancel) { book.cancelCast() }
+            } message: {
+                Text("Your spellbook messages go to \(book.confirmProvider == "anthropic" ? "Anthropic" : "OpenAI"). Their service may cost money on your account. Calendar, reminders and agent data are not attached.")
+            }
         }
     }
     @ViewBuilder private func entry(_ p: Page) -> some View {
@@ -119,6 +127,9 @@ struct SpellbookView: View {
                         .padding(.horizontal, 5).padding(.vertical, 2).background(Ink.red)
                 }
                 illuminated(p.text)
+                    .contextMenu {
+                        Link(destination: URL(string: "https://wudland.pages.dev/support")!) { Label("Report a problem", systemImage: "flag") }
+                    }
                 if let m = p.marg { MarginNote(marg: m) }
             }
             .padding(.leading, 26)

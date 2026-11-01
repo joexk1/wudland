@@ -91,9 +91,13 @@ final class LinkHub {
     @ObservationIgnored private var cachedSecret: SymmetricKey?
     private var secret: SymmetricKey {
         if let k = cachedSecret { return k }
-        let k: SymmetricKey
-        if let d = Keychain.data("token.secret"), d.count == 32 { k = SymmetricKey(data: d) }
-        else { k = SymmetricKey(size: .bits256); Keychain.set(k.withUnsafeBytes { Data($0) }, "token.secret") }
+        let found = Keychain.lookup("token.secret")
+        if let d = found.data, d.count == 32 { cachedSecret = SymmetricKey(data: d); return cachedSecret! }
+        // only mint a new secret when there genuinely isn't one; if the Keychain is just unreadable for a moment,
+        // use a throwaway key for now and try the real one again next time
+        let k = SymmetricKey(size: .bits256)
+        guard found.status == errSecItemNotFound || found.data != nil else { return k }
+        Keychain.set(k.withUnsafeBytes { Data($0) }, "token.secret")
         cachedSecret = k
         return k
     }
@@ -120,37 +124,60 @@ final class LinkHub {
         pairTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.pollPairing()
-                try? await Task.sleep(for: .seconds(3))
+                try? await Task.sleep(for: .seconds(6))
             }
         }
     }
-    func stopPairing() { pairTask?.cancel(); pairTask = nil; pending = []; seenHello = []; pairingNote = nil }
+    var isPairing: Bool { pairTask != nil }
+    func stopPairing() { pairTask?.cancel(); pairTask = nil; pending = []; pendingHello = []; seenHello = []; pairingNote = nil }
+
+    // MARK: - pairing v2 (only while the Link screen is open)
+
+    /// a hello we have challenged but not yet seen revealed (protocol v2)
+    private struct PairingHello { var nonce: String; var commit: Data; var name: String; var kind: String; var host: String; var topic: String; var created: Date; var ephemeralKey: Data }
+    @ObservationIgnored private var pendingHello: [PairingHello] = []
 
     private func pollPairing() async {
         let now = Date()
         pending.removeAll { now.timeIntervalSince($0.created) > 120 }
+        pendingHello.removeAll { now.timeIntervalSince($0.created) > 120 }
         if seenHello.count > 500 { return }
         let topics = [code(at: now), code(at: now.addingTimeInterval(-60))].map(Self.pairTopic)
         for m in await fetch(topics: Array(Set(topics)), since: "2m") {
             guard !Task.isCancelled else { return }
-            guard let d = m.message.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                  o["t"] as? String == "hello", let nonce = o["nonce"] as? String, let pk = o["pk"] as? String,
-                  !seenHello.contains(nonce), pending.count < 5, Data(base64Encoded: pk)?.count == 32, Data(base64Encoded: nonce)?.count == 16 else { continue }
-            seenHello.insert(nonce)
+            guard let d = m.message.data(using: .utf8), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
             let clean = { (s: Any?, n: Int, def: String) in String(((s as? String) ?? def).filter { !$0.isNewline }.prefix(n)) }
-            guard let pkData = Data(base64Encoded: pk), let nonceData = Data(base64Encoded: nonce),
-                  let peer = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: pkData) else { continue }
-            let eph = Curve25519.KeyAgreement.PrivateKey()
-            guard let shared = try? eph.sharedSecretFromKeyAgreement(with: peer) else { continue }
-            let key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: nonceData, sharedInfo: Data("wudland-pair-v1".utf8), outputByteCount: 32)
-            let digest = Array(SHA256.hash(data: Data("wudland-verify-v1:".utf8) + key.withUnsafeBytes { Data($0) }))
-            let value = digest.prefix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) } % 100_000_000
-            let digits = String(format: "%08d", value)
-            let verification = String(digits.prefix(4)) + " " + String(digits.suffix(4))
-            guard await post(topic: m.topic, json: ["t": "challenge", "v": 1, "to": nonce, "pk": eph.publicKey.rawRepresentation.base64EncodedString()]) else { continue }
-            pending.append(PairRequest(nonce: nonce, pk: pk, name: clean(o["name"], 40, "A computer"), kind: clean(o["kind"], 16, "cli").lowercased(),
-                                       host: clean(o["host"], 24, "computer"), topic: m.topic, verificationCode: verification, created: now, ephemeralKey: eph.rawRepresentation))
-            Sound.shared.play("bell"); Haptics.play("warning")
+            let nonce = clean(o["nonce"], 64, "")
+            switch o["t"] as? String {
+            case "hello" where o["v"] as? Int == 2:
+                guard let commit = (o["commit"] as? String).flatMap({ Data(base64Encoded: $0) }), commit.count == 32,
+                      Data(base64Encoded: nonce)?.count == 16, !seenHello.contains(nonce),
+                      pending.count + pendingHello.count < 5,
+                      (o["pk"] as? String) == nil else { continue }
+                seenHello.insert(nonce)
+                // v2: challenge immediately; the plugin's key only exists here as a commitment
+                let eph = Curve25519.KeyAgreement.PrivateKey()
+                guard await post(topic: m.topic, json: ["t": "challenge", "v": 2, "to": nonce, "pk": eph.publicKey.rawRepresentation.base64EncodedString()]) else { continue }
+                pendingHello.append(PairingHello(nonce: nonce, commit: commit, name: clean(o["name"], 40, "A computer"), kind: clean(o["kind"], 16, "cli").lowercased(),
+                                                 host: clean(o["host"], 24, "computer"), topic: m.topic, created: now, ephemeralKey: eph.rawRepresentation))
+            case "reveal" where o["v"] as? Int == 2:
+                guard let slot = pendingHello.first(where: { $0.nonce == nonce }), !pending.contains(where: { $0.nonce == nonce }),
+                      let pk = (o["pk"] as? String), let pkData = Data(base64Encoded: pk), pkData.count == 32,
+                      Data(SHA256.hash(data: pkData + Data(base64Encoded: slot.nonce)!)) == slot.commit else { continue }
+                pendingHello.removeAll { $0.nonce == nonce }
+                guard let peer = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: pkData),
+                      let eph = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: slot.ephemeralKey),
+                      let shared = try? eph.sharedSecretFromKeyAgreement(with: peer) else { continue }
+                let key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: Data(base64Encoded: nonce)!, sharedInfo: Data("wudland-pair-v1".utf8), outputByteCount: 32)
+                let digest = Array(SHA256.hash(data: Data("wudland-verify-v2:".utf8) + key.withUnsafeBytes { Data($0) }))
+                let value = digest.prefix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) } % 100_000_000
+                let digits = String(format: "%08d", value)
+                let verification = String(digits.prefix(4)) + " " + String(digits.suffix(4))
+                pending.append(PairRequest(nonce: nonce, pk: pk, name: slot.name, kind: slot.kind, host: slot.host,
+                                           topic: slot.topic, verificationCode: verification, created: slot.created, ephemeralKey: slot.ephemeralKey))
+                Sound.shared.play("bell"); Haptics.play("warning")
+            default: continue
+            }
         }
     }
 
@@ -216,6 +243,7 @@ final class LinkHub {
         if o["kind"] as? String == "letter" {
             let body = (o["body"] as? String).map { String($0.prefix(600)) } ?? ""
             let id = fingerprint
+            guard !letters.contains(where: { $0.id == id }) else { return }
             letters.insert(LetterItem(id: id, from: s("from", 40) ?? link.host, title: s("title", 120) ?? "A note", body: body, at: msgTime, read: false), at: 0)
             letters = Array(letters.prefix(60))
             Sound.shared.play("page")
@@ -306,9 +334,24 @@ final class LinkHub {
               let url = URL(string: "\(relay)/\(topics.joined(separator: ","))/json?poll=1&since=\(since.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "12h")") else { return [] }
         var r = URLRequest(url: url, timeoutInterval: 15)
         r.setValue("Wudland/1.0", forHTTPHeaderField: "User-Agent")
-        guard let (d, resp) = try? await URLSession.shared.data(for: r), (resp as? HTTPURLResponse)?.statusCode == 200 else { return [] }
-        return d.split(separator: UInt8(ascii: "\n")).prefix(500).compactMap { try? JSONDecoder().decode(Msg.self, from: Data($0)) }.filter { $0.event == "message" }
+        if let until = backoffUntil, until > .now { return [] }
+        guard let (bytes, resp) = try? await URLSession.shared.bytes(for: r), let http = resp as? HTTPURLResponse else { return [] }
+        if http.statusCode == 429 { backoffUntil = .now.addingTimeInterval(60); return [] }
+        guard http.statusCode == 200, http.expectedContentLength <= Self.maxBody else { return [] }
+        // read at most 1 MB, line by line; skip any single message over 8 KB
+        var out: [Msg] = [], total = 0
+        do {
+            for try await line in bytes.lines {
+                total += line.utf8.count + 1
+                if total > Self.maxBody || out.count >= 500 { break }
+                guard line.utf8.count <= 8192, let m = try? JSONDecoder().decode(Msg.self, from: Data(line.utf8)), m.event == "message" else { continue }
+                out.append(m)
+            }
+        } catch { return out }
+        return out
     }
+    private static let maxBody = 1_000_000
+    @ObservationIgnored private var backoffUntil: Date?
     private func post(topic: String, json: [String: Any]) async -> Bool {
         guard Self.topicOK(topic), let url = URL(string: "\(relay)/\(topic)"), let body = try? JSONSerialization.data(withJSONObject: json) else { return false }
         var r = URLRequest(url: url, timeoutInterval: 15)

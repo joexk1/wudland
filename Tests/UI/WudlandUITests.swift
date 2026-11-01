@@ -3,13 +3,23 @@ import XCTest
 final class WudlandUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    /// First launch asks for calendar, reminders, location and music. Allow them all, then check the village is up.
+    /// First launch walks the onboarding: name, then the "Ask me" step asks for calendar,
+    /// reminders, location and music. Allow them all, then check the village is up.
     func testFirstLaunchAsksPermissionsAndShowsTheVillage() throws {
         let app = XCUIApplication()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         app.launch()
         var answered = 0
         let buttons = ["Allow Full Access", "Allow While Using App", "Allow", "OK"]
+        let tap = { (label: String) in
+            let b = app.buttons[label]
+            if b.waitForExistence(timeout: 4) { b.tap() }
+        }
+        tap("Come in")
+        tap("That's me")
+        tap("Next")
+        tap("Ask me")
+        // answer every system permission prompt that appears while onboarding asks
         let deadline = Date().addingTimeInterval(40)
         while Date() < deadline {
             let alert = springboard.alerts.firstMatch
@@ -20,7 +30,8 @@ final class WudlandUITests: XCTestCase {
                 alert.buttons.element(boundBy: alert.buttons.count - 1).tap(); answered += 1
             } else if answered > 0 { break }
         }
-        XCTAssertGreaterThan(answered, 0, "first launch should ask for permissions")
+        XCTAssertGreaterThan(answered, 0, "the Ask me step should ask for permissions")
+        tap("Maybe later")
         XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout: 20), "village canvas should load")
         add(XCTAttachment(screenshot: app.screenshot()))
         XCTAssertEqual(app.state, .runningForeground)

@@ -15,6 +15,8 @@ final class Sources: NSObject, CLLocationManagerDelegate {
     private var musicCache: (at: Date, value: Music?)?
     private var weatherCache: (at: Date, key: String, value: Weather)?
     private var locationWaiters: [CheckedContinuation<CLLocation?, Never>] = []
+    private var authWaiters: [CheckedContinuation<Void, Never>] = []
+    private func flushAuth() { let w = authWaiters; authWaiters = []; w.forEach { $0.resume() } }
 
     override init() {
         super.init()
@@ -34,7 +36,14 @@ final class Sources: NSObject, CLLocationManagerDelegate {
     func requestAll() async {
         if EKEventStore.authorizationStatus(for: .event) == .notDetermined { _ = try? await events.requestFullAccessToEvents() }
         if EKEventStore.authorizationStatus(for: .reminder) == .notDetermined { _ = try? await events.requestFullAccessToReminders() }
-        if location.authorizationStatus == .notDetermined { location.requestWhenInUseAuthorization() ; try? await Task.sleep(for: .seconds(1)) }
+        if location.authorizationStatus == .notDetermined {
+            // wait for the answer (or 60 s) so the next prompt doesn't land on top of this one
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                authWaiters.append(c)
+                location.requestWhenInUseAuthorization()
+                Task { try? await Task.sleep(for: .seconds(60)); self.flushAuth() }
+            }
+        }
         if MPMediaLibrary.authorizationStatus() == .notDetermined {
             _ = await withCheckedContinuation { (c: CheckedContinuation<MPMediaLibraryAuthorizationStatus, Never>) in
                 MPMediaLibrary.requestAuthorization { c.resume(returning: $0) }
@@ -188,6 +197,11 @@ final class Sources: NSObject, CLLocationManagerDelegate {
     }
     private func flushLocation(_ l: CLLocation?) { let w = locationWaiters; locationWaiters = []; w.forEach { $0.resume(returning: l) } }
 
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        guard status != .notDetermined else { return }
+        Task { @MainActor in self.flushAuth() }
+    }
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         let l = locations.last
         Task { @MainActor in self.lastFix = l ?? self.lastFix; self.flushLocation(self.lastFix) }
@@ -198,21 +212,29 @@ final class Sources: NSObject, CLLocationManagerDelegate {
 
     // MARK: music (the library's play history; no account, nothing sent anywhere)
 
-    func music() -> Music? {
+    // the media query walks the whole library, so it never waits on the main thread; cached 10 minutes
+    func music() async -> Music? {
         guard musicAllowed else { return nil }
-        if let cache = musicCache, -cache.at.timeIntervalSinceNow < 60 { return cache.value }
-        let songs = (MPMediaQuery.songs().items ?? []).filter { $0.lastPlayedDate != nil }
-            .sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
-        let recent = songs.prefix(10).map { Music.Track(name: $0.title, artist: $0.artist, album: $0.albumTitle, at: $0.lastPlayedDate.map { When.iso.string(from: $0) }, playing: false) }
-        var plays: [String: Int] = [:]
-        for s in (MPMediaQuery.songs().items ?? []) { if let a = s.artist, s.playCount > 0 { plays[a, default: 0] += s.playCount } }
-        let top = plays.sorted { $0.value > $1.value }.prefix(5).map(\.key)
-        let player = MPMusicPlayerController.systemMusicPlayer
+        if let cache = musicCache, -cache.at.timeIntervalSinceNow < 600 { return cache.value }
+        let library: (recent: [Music.Track], top: [String]) = await Task.detached(priority: .utility) { () -> (recent: [Music.Track], top: [String]) in
+            let songs = (MPMediaQuery.songs().items ?? [])
+            let recent = songs.filter { $0.lastPlayedDate != nil }
+                .sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
+                .prefix(10)
+                .map { Music.Track(name: $0.title, artist: $0.artist, album: $0.albumTitle, at: $0.lastPlayedDate.map { When.iso.string(from: $0) }, playing: false) }
+            var plays: [String: Int] = [:]
+            for s in songs { if let a = s.artist, s.playCount > 0 { plays[a, default: 0] += s.playCount } }
+            return (recent, plays.sorted { $0.value > $1.value }.prefix(5).map(\.key))
+        }.value
         var now: Music.Track?
-        if player.playbackState == .playing, let item = player.nowPlayingItem {
+        let nowPlaying = await MainActor.run { () -> MPMediaItem? in
+            let player = MPMusicPlayerController.systemMusicPlayer
+            return player.playbackState == .playing ? player.nowPlayingItem : nil
+        }
+        if let item = nowPlaying {
             now = Music.Track(name: item.title, artist: item.artist, album: item.albumTitle, at: When.iso.string(from: .now), playing: true)
         }
-        let result: Music? = recent.isEmpty && now == nil ? nil : Music(now: now, recent: Array(recent), top: top)
+        let result: Music? = library.recent.isEmpty && now == nil ? nil : Music(now: now, recent: library.recent, top: library.top)
         musicCache = (.now, result)
         return result
     }

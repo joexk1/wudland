@@ -25,13 +25,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>The bard reads your music library and recent listening to tell you about your songs.</string>
+	<string>Wudland reads your music library and recently played songs so the village bard can talk about what you have been listening to. Nothing leaves this iPhone.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>The bell keeper reads your calendar to tell you what is coming up in your village.</string>
+	<string>Wudland reads your calendar events to show today’s and upcoming events in the Bell Tower. Your events stay on this iPhone.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>The farmer uses your approximate location to fetch local weather from Open-Meteo. You can enter a town instead.</string>
+	<string>Wudland uses your approximate location, rounded to your area, to fetch local weather from Open-Meteo for the village farmer. You can type a town in Settings instead.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>Your reminders appear on the village notice board.</string>
+	<string>Wudland reads your incomplete reminders to pin them on the village Notice Board, and lets you tick them off there. Your reminders stay on this iPhone.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Jacquard12-Regular.ttf</string>

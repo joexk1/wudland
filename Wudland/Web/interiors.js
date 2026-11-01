@@ -190,7 +190,7 @@ function buildGuild(data) {
   return finishRoom(sc);
 }
 // each agent's villager is named after the agent itself (its task title is what it talks about)
-const AGENT_NAMES = { claude: 'Claude', codex: 'Codex', opencode: 'opencode', agy: 'Antigravity', bonsai: 'Bonsai', joebro: 'JoeBro', gemini: 'Gemini', cursor: 'Cursor', aider: 'Aider', cli: 'Terminal' };
+const AGENT_NAMES = { claude: 'Claude', codex: 'Codex', opencode: 'opencode', agy: 'Antigravity', gemini: 'Gemini', cursor: 'Cursor', aider: 'Aider', cli: 'Terminal' };
 function agentName(n) {
   const src = String(n.source || '').toLowerCase();
   const base = AGENT_NAMES[src] || (src ? src.charAt(0).toUpperCase() + src.slice(1) : 'Agent');

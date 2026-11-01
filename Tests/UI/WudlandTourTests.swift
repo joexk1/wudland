@@ -50,8 +50,8 @@ final class WudlandTourTests: XCTestCase {
         app.windows.firstMatch.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
     }
     func tap(_ p: [Double]) { tap(p[0], p[1]) }
-    func idle(_ t: Double = 40) { _ = until(t) { js("T.idle()") == "true" } }
-    func scene() -> String { js("T.scene()") }
+    func idle(_ t: Double = 40) { _ = until(t) { js("TOUR.idle()") == "true" } }
+    func scene() -> String { js("TOUR.scene()") }
     func button(_ prefix: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
     }
@@ -60,7 +60,7 @@ final class WudlandTourTests: XCTestCase {
     }
     func speakingDone() {
         pause(0.6)
-        _ = until(14) { js("T.speaking()") == "false" }
+        _ = until(14) { js("TOUR.speaking()") == "false" }
         pause(0.4)
     }
 
@@ -71,7 +71,7 @@ final class WudlandTourTests: XCTestCase {
         for _ in 0..<40 {
             idle()
             if stop() { return }
-            guard let s = json("T.step(\(wx), \(wy))") as? [Double] else { return }
+            guard let s = json("TOUR.step(\(wx), \(wy))") as? [Double] else { return }
             tap(s)
             pause(0.4)
         }
@@ -81,15 +81,15 @@ final class WudlandTourTests: XCTestCase {
     @discardableResult func talk(_ id: String) -> Bool {
         for _ in 0..<40 {
             idle()
-            if js("T.talking()") == "true" { return true }
-            guard let a = json("T.talkPt('\(id)')") as? [String: Any] else { return false }
+            if js("TOUR.talking()") == "true" { return true }
+            guard let a = json("TOUR.talkPt('\(id)')") as? [String: Any] else { return false }
             if a["gone"] != nil { return false }
             if (a["on"] as? Bool) == true, let x = a["x"] as? Double, let y = a["y"] as? Double {
                 tap(x, y)
-                if until(25, { js("T.talking()") == "true" }) { _ = button("Say goodbye").waitForExistence(timeout: 5); return true }
-                js("T.release('\(id)')")
+                if until(25, { js("TOUR.talking()") == "true" }) { _ = button("Say goodbye").waitForExistence(timeout: 5); return true }
+                js("TOUR.release('\(id)')")
             } else if let x0 = a["x0"] as? Double, let y0 = a["y0"] as? Double {
-                if let s = json("T.step(\(x0), \(y0))") as? [Double] { tap(s); pause(0.5) } else { pause(0.5) }
+                if let s = json("TOUR.step(\(x0), \(y0))") as? [Double] { tap(s); pause(0.5) } else { pause(0.5) }
             }
         }
         return false
@@ -98,7 +98,7 @@ final class WudlandTourTests: XCTestCase {
     func closeTalk() {
         let b = button("Say goodbye")
         if b.exists { b.tap() }
-        _ = until(6) { js("T.talking()") == "false" }
+        _ = until(6) { js("TOUR.talking()") == "false" }
         pause(0.6)
     }
 
@@ -146,8 +146,8 @@ final class WudlandTourTests: XCTestCase {
             for _ in 0..<40 {
                 idle()
                 if scene() == id { break }
-                if let p = json("T.pickPt(\(pick))") as? [Double] { tap(p); pause(0.6); if until(30, { self.scene() == id }) { break } }
-                else if let d = json("T.doorOf('\(id)')") as? [Double], let s = json("T.step(\(d[0]), \(d[1]))") as? [Double] { tap(s); pause(0.5) }
+                if let p = json("TOUR.pickPt(\(pick))") as? [Double] { tap(p); pause(0.6); if until(30, { self.scene() == id }) { break } }
+                else if let d = json("TOUR.doorOf('\(id)')") as? [Double], let s = json("TOUR.step(\(d[0]), \(d[1]))") as? [Double] { tap(s); pause(0.5) }
                 else { pause(0.5) }
             }
         }
@@ -181,18 +181,18 @@ final class WudlandTourTests: XCTestCase {
         }
         XCTAssertGreaterThan(answered, 0)
         XCTAssertTrue(until(60) { FileManager.default.fileExists(atPath: self.dir + "/ready") }, "channel ready")
-        _ = until(30) { self.js("T.scene()") == "village" }
+        _ = until(30) { self.js("TOUR.scene()") == "village" }
         pause(2.5)
 
         // 2. the village: HUD, then a slow flight over the whole island
         mark("village home view")
         pause(2.0)
         for stop in [[-8.8, -23.0], [8.4, -23.5], [0.0, -1.0], [12.0, -3.0], [9.0, 8.6], [2.2, 15.2], [-7.4, 21.6], [-9.2, 7.2]] as [[Double]] {
-            js("T.fly([[\(stop[0]), \(stop[1])]], 3200)")
-            _ = until(15) { self.js("T.busy") == "false" }
+            js("TOUR.fly([[\(stop[0]), \(stop[1])]], 3200)")
+            _ = until(15) { self.js("TOUR.busy") == "false" }
             pause(1.0)
         }
-        js("T.fly(['player'], 2200)"); _ = until(10) { self.js("T.busy") == "false" }
+        js("TOUR.fly(['player'], 2200)"); _ = until(10) { self.js("TOUR.busy") == "false" }
         pause(1.0)
         mark("village zoom out and in")
         let web = app.webViews.firstMatch
@@ -209,18 +209,18 @@ final class WudlandTourTests: XCTestCase {
         converse("wren", chips: ["What's new?"])
         converse("clank", chips: ["Which machines are up?"])
         converse("bram", chips: ["Will it rain?"])
-        if let agentID = (js("T.ids()").split(separator: ",").map(String.init).first { $0.hasPrefix("agent:") }) {
+        if let agentID = (js("TOUR.ids()").split(separator: ",").map(String.init).first { $0.hasPrefix("agent:") }) {
             converse(agentID, chips: ["What are you doing?"], tab: "Work log")
         }
 
         // 4. notice board (reminders)
         mark("notice board")
-        let bw = json("T.worldAt(3.4, 2.6)") as? [Double] ?? [0, 0]
+        let bw = json("TOUR.worldAt(3.4, 2.6)") as? [Double] ?? [0, 0]
         for _ in 0..<40 {
             idle()
-            if js("T.talking()") == "true" { break }
-            if let p = json("T.pickPt(40)") as? [Double] { tap(p); pause(0.6); if until(30, { self.js("T.talking()") == "true" }) { break } }
-            else if let s = json("T.step(\(bw[0]), \(bw[1]))") as? [Double] { tap(s); pause(0.5) }
+            if js("TOUR.talking()") == "true" { break }
+            if let p = json("TOUR.pickPt(40)") as? [Double] { tap(p); pause(0.6); if until(30, { self.js("TOUR.talking()") == "true" }) { break } }
+            else if let s = json("TOUR.step(\(bw[0]), \(bw[1]))") as? [Double] { tap(s); pause(0.5) }
             else { pause(0.5) }
         }
         _ = button("Say goodbye").waitForExistence(timeout: 5)
@@ -246,7 +246,7 @@ final class WudlandTourTests: XCTestCase {
         mark("Artificers' Guild")
         enter("guild", pick: 2, viaPill: "Agents at work")
         converse("gearwin", chips: ["Who's working now?"], tab: "Ledger", row: "Refactor the login")
-        let ids = js("T.ids()").split(separator: ",").map(String.init).filter { $0.hasPrefix("agent:") }
+        let ids = js("TOUR.ids()").split(separator: ",").map(String.init).filter { $0.hasPrefix("agent:") }
         for (k, id) in ids.prefix(5).enumerated() {
             mark("guild agent \(k + 1)")
             converse(id, chips: k == 0 ? ["What are you doing?"] : [], tab: k == 0 ? "Work log" : nil)
@@ -257,7 +257,7 @@ final class WudlandTourTests: XCTestCase {
         mark("Gossiping Goose")
         enter("tavern", pick: 3)
         converse("mags", chips: ["Who's waiting on me?"], tab: "Tables", row: "Mina")
-        let chats = js("T.ids()").split(separator: ",").map(String.init).filter { $0.hasPrefix("chat:") }
+        let chats = js("TOUR.ids()").split(separator: ",").map(String.init).filter { $0.hasPrefix("chat:") }
         for (k, id) in chats.prefix(4).enumerated() {
             mark("tavern patron \(k + 1)")
             converse(id, chips: k == 0 ? ["Sum it up"] : [], tab: k == 0 ? "Overheard" : nil)
@@ -287,7 +287,7 @@ final class WudlandTourTests: XCTestCase {
             }
             let close = button("Close the book")
             if close.exists { close.tap(); pause(1.0) }
-            _ = until(8) { self.js("T.talking()") == "false" }
+            _ = until(8) { self.js("TOUR.talking()") == "false" }
         }
         leaveBuilding()
 
@@ -298,7 +298,7 @@ final class WudlandTourTests: XCTestCase {
         mark("today's scroll")
         for _ in 0..<20 {
             idle()
-            if let p = json("T.pickPt(91)") as? [Double] { tap(p); break } else { pause(0.5) }
+            if let p = json("TOUR.pickPt(91)") as? [Double] { tap(p); break } else { pause(0.5) }
         }
         pause(1.5); idle(); pause(2.6)
         pause(1.8)
@@ -309,7 +309,7 @@ final class WudlandTourTests: XCTestCase {
         mark("mirror")
         for _ in 0..<20 {
             idle()
-            if let p = json("T.pickPt(92)") as? [Double] { tap(p); break } else { pause(0.5) }
+            if let p = json("TOUR.pickPt(92)") as? [Double] { tap(p); break } else { pause(0.5) }
         }
         pause(1.5); idle(); pause(2.6)
         closeCard()
@@ -335,7 +335,7 @@ final class WudlandTourTests: XCTestCase {
 
         // 7. closing shot
         mark("closing")
-        js("T.fly([[0, 0], 'player'], 3000)"); _ = until(15) { self.js("T.busy") == "false" }
+        js("TOUR.fly([[0, 0], 'player'], 3000)"); _ = until(15) { self.js("TOUR.busy") == "false" }
         pause(3.0)
         mark("end")
     }

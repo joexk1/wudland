@@ -5,12 +5,15 @@ import Security
 enum Keychain {
     private static let service = "app.wudland"
 
-    static func data(_ key: String) -> Data? {
+    static func data(_ key: String) -> Data? { lookup(key).data }
+
+    /// the item and the raw status, so callers can tell "not there" (errSecItemNotFound) from "can't read right now"
+    static func lookup(_ key: String) -> (data: Data?, status: OSStatus) {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                 kSecAttrAccount as String: key, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
-        return out as? Data
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        return (status == errSecSuccess ? out as? Data : nil, status)
     }
 
     static func set(_ value: Data?, _ key: String) {

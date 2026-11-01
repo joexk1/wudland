@@ -21,17 +21,26 @@ final class Game: NSObject, WKScriptMessageHandler {
     @ObservationIgnored var onEvent: ((GameEvent) -> Void)?
     @ObservationIgnored private(set) var webView: WKWebView!
 
-    func makeWebView(boot: Data, avatar: [String: Any]) -> WKWebView {
-        if let webView { return webView }
-        let cfg = WKWebViewConfiguration()
-        let ucc = WKUserContentController()
-        let avatarJSON = (try? JSONSerialization.data(withJSONObject: avatar)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-        let dataJSON = String(data: boot, encoding: .utf8) ?? "{}"
+    /// the latest village data and look, so a reload after WebKit's process dies boots with today's state, not launch-time state
+    @ObservationIgnored private var lastData = Data("{}".utf8)
+    @ObservationIgnored private var lastAvatar: [String: Any] = [:]
+
+    private func bootScript() -> WKUserScript {
+        let avatarJSON = (try? JSONSerialization.data(withJSONObject: lastAvatar)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let dataJSON = String(data: lastData, encoding: .utf8) ?? "{}"
         let lordJSON = q(Lord.name)
         let reduce = UIAccessibility.isReduceMotionEnabled ? "true" : "false"
         let saveJSON = Economy.saved.flatMap { try? JSONSerialization.data(withJSONObject: $0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "null"
-        ucc.addUserScript(WKUserScript(source: "window.WUD_BOOT = { lord: \(lordJSON), data: \(dataJSON), avatar: \(avatarJSON), save: \(saveJSON) }; if (\(reduce)) window.matchMedia = q => ({ matches: q.includes('reduce') });",
-                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        return WKUserScript(source: "window.WUD_BOOT = { lord: \(lordJSON), data: \(dataJSON), avatar: \(avatarJSON), save: \(saveJSON) }; if (\(reduce)) window.matchMedia = q => ({ matches: q.includes('reduce') });",
+                            injectionTime: .atDocumentStart, forMainFrameOnly: true)
+    }
+
+    func makeWebView(boot: Data, avatar: [String: Any]) -> WKWebView {
+        if let webView { return webView }
+        lastData = boot; lastAvatar = avatar
+        let cfg = WKWebViewConfiguration()
+        let ucc = WKUserContentController()
+        ucc.addUserScript(bootScript())
         ucc.add(WeakMessageHandler(self), name: "wud")
         cfg.userContentController = ucc
         cfg.suppressesIncrementalRendering = true
@@ -49,8 +58,24 @@ final class Game: NSObject, WKScriptMessageHandler {
         if let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Web") {
             wv.loadFileURL(index, allowingReadAccessTo: index.deletingLastPathComponent())
         }
+        wv.navigationDelegate = navProxy
         webView = wv
         return wv
+    }
+
+    @ObservationIgnored private lazy var navProxy = NavigationProxy(self)
+
+    /// iOS can kill WebKit's content process (memory pressure, long in the background). Reboot the village
+    /// with fresh state instead of leaving a blank canvas.
+    fileprivate func webProcessDied() {
+        guard let wv = webView else { return }
+        ready = false
+        sceneID = "village"; sceneTitle = "Wudland"
+        wv.configuration.userContentController.removeAllUserScripts()
+        wv.configuration.userContentController.addUserScript(bootScript())
+        if let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Web") {
+            wv.loadFileURL(index, allowingReadAccessTo: index.deletingLastPathComponent())
+        }
     }
 
     nonisolated func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -92,9 +117,10 @@ final class Game: NSObject, WKScriptMessageHandler {
 
     // MARK: - calls into the village
     private func js(_ s: String) { webView?.evaluateJavaScript(s, completionHandler: nil) }
-    func setData(_ data: Data) { if let s = String(data: data, encoding: .utf8) { js("wud.setData(\(s))") } }
+    func setData(_ data: Data) { lastData = data; if let s = String(data: data, encoding: .utf8) { js("wud.setData(\(s))") } }
     func setLordName() { js("window.WUD_BOOT.lord = \(q(Lord.name))") }
     func setAvatar(_ look: [String: Any]) {
+        lastAvatar = look
         if let d = try? JSONSerialization.data(withJSONObject: look), let s = String(data: d, encoding: .utf8) { js("wud.setAvatar(\(s))") }
     }
     func endTalk() { js("wud.endTalk()") }
@@ -131,6 +157,14 @@ struct GameView: UIViewRepresentable {
 }
 
 /// WKUserContentController retains its handlers; this proxy keeps it from retaining Game.
+private final class NavigationProxy: NSObject, WKNavigationDelegate {
+    weak var target: Game?
+    init(_ target: Game) { self.target = target }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        Task { @MainActor [weak target] in target?.webProcessDied() }
+    }
+}
+
 private final class WeakMessageHandler: NSObject, WKScriptMessageHandler {
     weak var target: Game?
     init(_ target: Game) { self.target = target }

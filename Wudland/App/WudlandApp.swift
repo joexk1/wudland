@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct WudlandApp: App {
+    init() { TourMode.prepare() }
     var body: some Scene {
         WindowGroup { RootView().preferredColorScheme(.dark).statusBarHidden() }
     }
@@ -27,6 +28,7 @@ struct RootView: View {
     @State private var talking: Talking?
     @State private var card: Card?
     @State private var showSplash = true
+    @AppStorage("onboarded") private var onboarded = false
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
@@ -57,6 +59,14 @@ struct RootView: View {
                         .transition(.scale(scale: 0.92).combined(with: .opacity))
                 }
 
+                if !onboarded && !showSplash && game.ready {
+                    Onboarding(game: game) { openSettings in
+                        withAnimation(.easeOut(duration: 0.25)) { onboarded = true }
+                        Task { await store.refresh { game.setData($0) } }
+                        if openSettings { card = .settings }
+                    }
+                    .transition(.opacity)
+                }
                 if showSplash { Splash().transition(.opacity) }
             }
             .animation(.spring(duration: 0.38, bounce: 0.18), value: talkKey)
@@ -68,6 +78,7 @@ struct RootView: View {
             switch p {
             case .active:
                 game.setPaused(false)
+                if case .settings = card { LinkHub.shared.startPairing() }
                 store.start { game.setData($0) }
                 Sound.shared.start(); ambience()
             case .background:
@@ -276,9 +287,16 @@ struct RootView: View {
                 if talking != nil { endTalk() }
             }
         }
-        Task { await Sources.shared.requestAll(); await store.refresh { game.setData($0) } }
+        // first launch asks for permissions from the onboarding, with a reason for each; after that, quietly refresh
+        Task {
+            if onboarded { await Sources.shared.requestAll() }
+            await store.refresh { game.setData($0) }
+        }
         store.start { game.setData($0) }
         Sound.shared.start()
+        #if DEBUG
+        TourMode.start(game: game)
+        #endif
         // never leave the lord staring at the splash if the canvas is slow
         Task { try? await Task.sleep(for: .seconds(6)); withAnimation { showSplash = false } }
     }

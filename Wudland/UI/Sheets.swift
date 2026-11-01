@@ -239,7 +239,12 @@ struct SettingsSheet: View {
             }
             Text(Conversation.modelProblem ?? "Villagers think with Apple's on-device model. The wizard stays on this phone unless you choose an external provider above.")
                 .font(Fonts.pixel(11)).foregroundStyle(Ink.faded)
-            Text("iPhone duo mode · coming soon").font(Fonts.pixel(12)).foregroundStyle(Ink.inkSoft)
+            HStack(spacing: 14) {
+                Link("Privacy policy", destination: URL(string: "https://wudland.pages.dev/privacy")!)
+                Link("Support", destination: URL(string: "https://wudland.pages.dev/support")!)
+                Link("Licences", destination: URL(string: "https://wudland.pages.dev/licenses/")!)
+            }
+            .font(Fonts.pixel(13)).tint(Ink.quill)
             Text("Weather: Open-Meteo (CC BY 4.0). Fonts: Jacquard 12 and Pixelify Sans (SIL OFL).").font(Fonts.pixel(11)).foregroundStyle(Ink.faded)
             Text("Renderer forked from Pixel Plays by AmirMushich (MIT).").font(Fonts.pixel(11)).foregroundStyle(Ink.faded)
             }
