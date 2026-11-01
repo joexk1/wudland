@@ -9,7 +9,7 @@
   A little pixel village for your iPhone, where your coding agents live as villagers.
 </p>
 
-<p align="center"><a href="https://wudland.netlify.app"><b>wudland.netlify.app</b></a> · <a href="https://github.com/joexk1/wudland-plugins">Wudland Link</a></p>
+<p align="center"><a href="https://wudland.pages.dev"><b>wudland.pages.dev</b></a> · <a href="https://github.com/joexk1/wudland-plugins">Wudland Link</a></p>
 
 ![Wudland: an autumn village, the Artificers' Guild, and your cottage](README_assets/village-showcase.png)
 

@@ -189,15 +189,12 @@ function buildGuild(data) {
   });
   return finishRoom(sc);
 }
-// a short guild name for an agent: their title, else their working folder
-// every agent gets a village name of its own, steady for its whole life (its task title is what it talks about)
-const ARTIFICER_NAMES = ['Aldous', 'Bertram', 'Cuthbert', 'Edwyn', 'Godric', 'Hamund', 'Ivo', 'Jocelyn', 'Leofric', 'Maud', 'Osric', 'Rowena', 'Sigrid', 'Tamsin', 'Ulric', 'Wystan', 'Ysolde', 'Alaric', 'Bryony', 'Elric', 'Hilde', 'Percival', 'Rosamund', 'Thaddeus', 'Agnes', 'Benedict', 'Odo', 'Winifred'];
-const ARTIFICER_TITLE = { claude: 'the Clay-Mage', codex: 'the Scrivener', opencode: 'the Tinker', agy: 'the Journeyman', bonsai: 'the Hermit' };
+// each agent's villager is named after the agent itself (its task title is what it talks about)
+const AGENT_NAMES = { claude: 'Claude', codex: 'Codex', opencode: 'opencode', agy: 'Antigravity', bonsai: 'Bonsai', joebro: 'JoeBro', gemini: 'Gemini', cursor: 'Cursor', aider: 'Aider', cli: 'Terminal' };
 function agentName(n) {
-  let h = 2166136261; const key = String(n.id || n.name || '');
-  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
-  const first = ARTIFICER_NAMES[(h >>> 0) % ARTIFICER_NAMES.length];
-  return n.parent ? `Apprentice ${first}` : `${first} ${ARTIFICER_TITLE[n.source] || 'the Artificer'}`;
+  const src = String(n.source || '').toLowerCase();
+  const base = AGENT_NAMES[src] || (src ? src.charAt(0).toUpperCase() + src.slice(1) : 'Agent');
+  return n.parent ? `${base}'s apprentice` : base;
 }
 
 /* ---------- the Bell Tower ---------- */

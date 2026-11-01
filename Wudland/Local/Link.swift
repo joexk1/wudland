@@ -87,10 +87,14 @@ final class LinkHub {
 
     // MARK: - the app token (RFC 6238, 6 digits, 60 seconds)
 
+    /// Loaded once and kept in memory, so the code can never drift between reads even if the Keychain is briefly unavailable.
+    @ObservationIgnored private var cachedSecret: SymmetricKey?
     private var secret: SymmetricKey {
-        if let d = Keychain.data("token.secret"), d.count == 32 { return SymmetricKey(data: d) }
-        let k = SymmetricKey(size: .bits256)
-        Keychain.set(k.withUnsafeBytes { Data($0) }, "token.secret")
+        if let k = cachedSecret { return k }
+        let k: SymmetricKey
+        if let d = Keychain.data("token.secret"), d.count == 32 { k = SymmetricKey(data: d) }
+        else { k = SymmetricKey(size: .bits256); Keychain.set(k.withUnsafeBytes { Data($0) }, "token.secret") }
+        cachedSecret = k
         return k
     }
     func code(at date: Date = .now) -> String {
@@ -102,7 +106,7 @@ final class LinkHub {
         return String(format: "%06d", n % 1_000_000)
     }
     /// a fresh token secret: every code shown before stops working (links already made keep working)
-    func rotateToken() { Keychain.set(nil, "token.secret"); _ = secret }
+    func rotateToken() { Keychain.set(nil, "token.secret"); cachedSecret = nil; _ = secret }
 
     static func pairTopic(_ code: String) -> String {
         let h = SHA256.hash(data: Data("wudland-pair-v1:\(code)".utf8)).map { String(format: "%02x", $0) }.joined()

@@ -26,3 +26,28 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
+  WudlandTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests/Unit]
+    dependencies: [{target: Wudland}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.joerobinson.wudland.tests
+  WudlandUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/UI]
+    dependencies: [{target: Wudland}]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.joerobinson.wudland.uitests
+schemes:
+  Wudland:
+    build:
+      targets:
+        Wudland: all
+    test:
+      targets: [WudlandUITests, WudlandTests]
