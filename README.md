@@ -9,7 +9,7 @@
   An iPhone app where your calendar lives in the bell tower and your coding agents turn up for work at the guild.
 </p>
 
-<p align="center"><a href="https://wudland.pages.dev"><b>wudland.pages.dev</b></a> · <a href="https://github.com/joexk1/wudland-plugins">Wudland Link (the plugins)</a></p>
+<p align="center"><a href="https://wudland.pages.dev"><b>wudland.pages.dev</b></a> · <a href="https://apps.apple.com/us/app/wudland/id6829491480">Download on the App Store</a> · <a href="https://github.com/joexk1/wudland-plugins">Wudland Link (the plugins)</a></p>
 
 ![The same village by day and by night](README_assets/hero.png)
 
@@ -140,7 +140,7 @@ The world is drawn by the bundled JavaScript engine inside a WKWebView. The app 
 
 ## Status
 
-[Get Wudland free on the App Store](https://apps.apple.com/app/id6829491480). For iPhone, iOS 26 and later.
+[Get Wudland free on the App Store](https://apps.apple.com/us/app/wudland/id6829491480). For iPhone, iOS 26 and later.
 
 **iPhone duo mode: coming soon.**
 
