@@ -140,7 +140,7 @@ The world is drawn by the bundled JavaScript engine inside a WKWebView. The app 
 
 ## Status
 
-The first iPhone release is in App Store review. I'll add the link here once it's out.
+[Get Wudland free on the App Store](https://apps.apple.com/app/id6829491480). For iPhone, iOS 26 and later.
 
 **iPhone duo mode: coming soon.**
 
