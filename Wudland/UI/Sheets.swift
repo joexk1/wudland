@@ -46,11 +46,7 @@ struct MirrorSheet: View {
     var onClose: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("The Mirror").font(Fonts.blackletter(30)).foregroundStyle(Ink.ink)
-                Spacer()
-                Button(action: onClose) { PixelIcon(rows: PixelIcon.close, scale: 2.4).padding(8) }
-            }
+            SheetHeader(title: "The Mirror", onClose: onClose)
             Text("Who's the fairest lord of Wudland?").font(Fonts.pixel(13)).foregroundStyle(Ink.faded)
             swatches("Skin", Avatar.skins, $avatar.skin)
             swatches("Hair", Avatar.hairs, $avatar.hair)
@@ -65,24 +61,30 @@ struct MirrorSheet: View {
                 }
             }
         }
-        .padding(18)
-        .parchment()
+        .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 18)
+        .parchment(ornate: true)
         .padding(12)
     }
     private func changed() { Sound.shared.play("tap"); Haptics.play("soft"); onChange() }
     private func swatches(_ title: String, _ colors: [[Int]], _ sel: Binding<Int>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft)
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 ForEach(colors.indices, id: \.self) { i in
                     Button { sel.wrappedValue = i; changed() } label: {
                         let c = colors[i]
-                        PixelFrame(step: 2).fill(Color(red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255))
-                            .overlay { PixelFrame(step: 2).stroke(Ink.ink, lineWidth: sel.wrappedValue == i ? 3 : 1.5) }
-                            .frame(width: 34, height: 28)
-                            .offset(y: sel.wrappedValue == i ? -2 : 0)
+                        let on = sel.wrappedValue == i
+                        PixelFrame(step: 2).fill(Ink.rgb(c))
+                            .overlay { PixelFrame(step: 2).stroke(on ? Ink.ink : Ink.inkSoft, lineWidth: on ? 3 : 1.5) }
+                            .overlay(alignment: .bottom) { if on { PixelIcon(rows: ["X.X", ".X."], color: Ink.goldDeep, scale: 2).offset(y: 8) } }
+                            .frame(width: 34, height: 30)
+                            .offset(y: on ? -3 : 0)
+                            .frame(minWidth: 40, minHeight: 44)
+                            .animation(Motion.press, value: on)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SquishStyle(scale: 0.88))
+                    .accessibilityLabel("\(title) \(i + 1)")
+                    .accessibilityAddTraits(sel.wrappedValue == i ? .isSelected : [])
                 }
             }
         }
@@ -96,11 +98,7 @@ struct ScrollSheet: View {
     var onClose: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Today's Scroll").font(Fonts.blackletter(30)).foregroundStyle(Ink.ink)
-                Spacer()
-                Button(action: onClose) { PixelIcon(rows: PixelIcon.close, scale: 2.4).padding(8) }
-            }
+            SheetHeader(title: "Today's Scroll", onClose: onClose)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if let w = village.weather {
@@ -123,8 +121,8 @@ struct ScrollSheet: View {
             }
             .scrollIndicators(.hidden)
         }
-        .padding(18)
-        .parchment()
+        .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 18)
+        .parchment(ornate: true)
         .padding(12)
     }
 }
@@ -151,11 +149,7 @@ struct SettingsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("The Lord's Desk").font(Fonts.blackletter(30)).foregroundStyle(Ink.ink)
-                Spacer()
-                Button(action: onClose) { PixelIcon(rows: PixelIcon.close, scale: 2.4).padding(8) }
-            }
+            SheetHeader(title: "The Lord's Desk", onClose: onClose)
             ScrollView {
             VStack(alignment: .leading, spacing: 18) {
             group("Your village") {
@@ -232,7 +226,7 @@ struct SettingsSheet: View {
                     Text(String(format: "%02d:%02d", Int(h), Int((h.truncatingRemainder(dividingBy: 1) * 60).rounded())) + (sunHour >= 0 ? "  \u{00B7} held" : "  \u{00B7} live"))
                         .font(Fonts.pixel(13)).foregroundStyle(Ink.inkSoft).monospacedDigit()
                     Spacer()
-                    Button("Back to now") { sunHour = -1; game.setHour(nil); Sound.shared.play("tap") }
+                    Button("Back to now") { sunHour = -1; game.setHour(nil); Sound.shared.play("tap"); Haptics.play("light") }
                         .buttonStyle(PixelButtonStyle(fill: sunHour >= 0 ? Ink.gold : Ink.parchmentDeep)).font(Fonts.pixel(12))
                         .disabled(sunHour < 0)
                 }
@@ -257,8 +251,8 @@ struct SettingsSheet: View {
             Button("Unlink", role: .destructive) { if let id = unlinkID { link.unlink(id) } }
         }
         }
-        .padding(18)
-        .parchment()
+        .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 18)
+        .parchment(ornate: true)
         .padding(12)
     }
     private func loadProvider() {
@@ -271,7 +265,10 @@ struct SettingsSheet: View {
     }
     private func group<C: View>(_ title: String, @ViewBuilder _ c: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft)
+            HStack(spacing: 6) {
+                PixelIcon(rows: [".X.", "XXX", ".X."], color: Ink.goldDeep, scale: 2)
+                Text(title).font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft)
+            }
             c()
         }
         .foregroundStyle(Ink.ink)
@@ -284,8 +281,8 @@ struct SettingsSheet: View {
                 else { TextField("", text: text, prompt: Text(placeholder).foregroundStyle(Ink.faded)) }
             }
             .font(Fonts.pixel(14)).foregroundStyle(Ink.ink).textInputAutocapitalization(.never).autocorrectionDisabled()
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .background { PixelFrame(step: 2).fill(Ink.parchmentDeep) }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background { PixelFrame(step: 2).fill(Ink.parchmentDeep); PixelFrame(step: 2).stroke(Ink.inkSoft, lineWidth: 2) }
         }
     }
 }

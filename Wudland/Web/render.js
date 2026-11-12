@@ -40,7 +40,8 @@ function growGrass(scene, density = .17) {
     scene.tufts.push({
       ix, iy, height: 1 + (hash(ix, iy * 2) * 3 | 0), base: Math.round(noise(ix * .09, iy * .18) * 2.2),
       phase: ix * .11 + iy * .19 + hash(ix, iy) * .9,
-      bloom: hash(ix * 7, iy) < .03 ? rgb(...[[250, 246, 226], [240, 200, 84], [226, 132, 150], [190, 170, 230]][hash(ix, iy * 3) * 4 | 0]) : 0,
+      // wildflowers gather in drifts, with only the odd stray between them
+      bloom: hash(ix * 7, iy) < (noise(ix * .045, iy * .09) > .6 ? .1 : .006) ? rgb(...[[250, 246, 226], [240, 200, 84], [226, 132, 150], [190, 170, 230]][hash(ix, iy * 3) * 4 | 0]) : 0,
     });
   }
 }
@@ -54,6 +55,7 @@ function finishBake(scene) {
   });
 }
 function addLight(scene, x, y, z, r, k = 1, flicker = .15) {
+  if (ORG) { x += ORG.dx; y += ORG.dy; }
   scene.lights.push({ x, y, z, r, k, flicker, seed: Math.random() * 10 });
 }
 function bakeLights(scene) {
@@ -178,10 +180,14 @@ function person(x, y, yaw, pose, look, add = dynamicAdd) {
   const C = c => () => c;
   const t = pose.t || 0, walk = pose.walk || 0, mv = pose.moving || 0;
   const sitting = pose.act === 'sit' || pose.act === 'sleep' || pose.act === 'write';
-  const bob = mv ? Math.abs(Math.sin(walk)) * .06 : (STILL ? 0 : Math.sin(t * 2.2 + x) * .012);
+  const bob = Math.abs(Math.sin(walk)) * .08 * mv;
+  // idle breathing lifts the shoulders and head a pixel now and then; the feet stay planted
+  const breath = STILL || pose.act === 'sleep' ? 0 : Math.sin(t * 1.7 + x * 3 + y) * .04 * (1 - mv);
   const hip = (sitting ? .5 : .56) + bob;
+  // the head may turn a little on its own (a glance at the player, a look around)
+  const hyaw = yaw + (pose.glance || 0), hfx = Math.cos(hyaw), hfy = Math.sin(hyaw);
   // legs
-  const stride = Math.sin(walk) * .2 * mv;
+  const stride = Math.sin(walk) * .24 * mv;
   if (!look.robe) {
     for (const side of [-1, 1]) {
       const s = side * stride, lift = Math.max(0, Math.sin(walk + (side > 0 ? 0 : Math.PI))) * .08 * mv;
@@ -196,7 +202,7 @@ function person(x, y, yaw, pose, look, add = dynamicAdd) {
     }
   }
   // body
-  const shZ = hip + .5, lean = pose.act === 'write' ? .12 : pose.act === 'sleep' ? .22 : 0;
+  const shZ = hip + .5 + breath, lean = (pose.act === 'write' ? .12 : pose.act === 'sleep' ? .22 : 0) + .07 * mv;
   const neck = P(lean, 0, shZ + .02);
   if (look.robe) A(P(0, 0, sitting ? hip : .08), P(lean * .5, 0, shZ), look.robeW || .34, .25, z => z < .3 + base && look.hem ? look.hem : look.shirt);
   else A(P(0, 0, hip), P(lean * .6, 0, shZ), .27, .25, (z) => look.stripe && Math.floor(z * 6) % 2 ? look.stripe : look.shirt);
@@ -204,7 +210,7 @@ function person(x, y, yaw, pose, look, add = dynamicAdd) {
   if (look.apron) A(P(.17, 0, hip - .12), P(.18 + lean, 0, shZ - .06), .17, .15, C(look.apron));
   if (look.cape) A(P(-.16, 0, hip - .1), P(-.12, 0, shZ), .25, .26, C(look.cape));
   // arms
-  const swing = Math.sin(walk) * .5 * mv;
+  const swing = Math.sin(walk) * .62 * mv;
   let armR = -swing, armL = swing, reachR = 0, reachL = 0;
   const act = pose.act;
   if (act === 'hammer') { const h = Math.max(0, Math.sin(t * 7)); armR = -1.7 * h - .3; reachR = .2; }
@@ -228,16 +234,16 @@ function person(x, y, yaw, pose, look, add = dynamicAdd) {
   const head = P(lean + nod * .4, 0, shZ + .34 - nod * .5);
   A(neck, neck, .1, .1, C(look.skin));
   add(head, head, .33 * k, .33 * k, C(look.skin));
-  const hairBack = [head[0] - fx * .07 * k, head[1] - fy * .07 * k, head[2] + .07 * k];
-  if (look.hair && !look.hideHair && look.hat !== 'hood' && look.hat !== 'helmet') add(hairBack, hairBack, .315 * k, .315 * k, C(look.hair));
+  const hairBack = [head[0] - hfx * .07 * k, head[1] - hfy * .07 * k, head[2] + .07 * k];
+  if (look.hair && !look.hideHair && look.hat !== 'hood' && look.hat !== 'helmet') { add(hairBack, hairBack, .315 * k, .315 * k, C(look.hair)); if (look.longHair) add(hairBack, P(-.2, 0, shZ - .3), .27 * k, .16 * k, C(look.hair)); }
   if (look.beard) {
-    const b = [head[0] + fx * .17 * k, head[1] + fy * .17 * k, head[2] - .17 * k];
+    const b = [head[0] + hfx * .17 * k, head[1] + hfy * .17 * k, head[2] - .17 * k];
     add(b, [b[0], b[1], b[2] - .1 * k], .17 * k, .12 * k, C(look.beard));
   }
-  hat(look, head, fx, fy, k, add);
+  hat(look, head, hfx, hfy, k, add);
   if (look.gear && typeof gear === 'function') gear(look, { P, A, add, k, fx, fy, sx, sy, shZ, hip, head, handR, handL, t, mv, walk });
   // the cute part: eyes and blush as single pixels pushed just in front of the head
-  face(head, fx, fy, sx, sy, k, look, pose);
+  face(head, hfx, hfy, -hfy, hfx, k, look, pose);
   return { head, handR, handL };
 }
 function hat(look, head, fx, fy, k, add) {
@@ -376,6 +382,7 @@ function stepParticles(dt) {
     p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
     if (p.g) p.vz -= p.g * dt;
     if (p.drag) { p.vx *= 1 - p.drag * dt; p.vy *= 1 - p.drag * dt; }
+    if (p.wob) { const w = Math.sin(p.life * p.wob) * dt * .5; p.x += w; p.y -= w; }
   }
 }
 function drawParticles(sceneId) {
@@ -388,7 +395,13 @@ function drawParticles(sceneId) {
     const c = typeof p.c === 'function' ? p.c(p) : p.c;
     T.pix[i] = c;
     if (p.glow) T.emit[i] = 1;
-    if (p.size === 2) {
+    if (p.puff) {   // smoke swells as it rises: a 2x2 puff that opens into a little round cloud
+      const big = p.life < p.puff;
+      if (ix + 1 < T.W) T.pix[i + 1] = c;
+      if (iy + 1 < T.H) { T.pix[i + T.W] = c; if (ix + 1 < T.W) T.pix[i + T.W + 1] = c; }
+      // the outer ring is laid in a checker so the puff thins into the air instead of sitting there like a snowball
+      if (big && ix > 0 && ix + 2 < T.W && iy > 0 && iy + 2 < T.H) { const e = (ix + iy) & 1; T.pix[i - T.W + e] = c; T.pix[i + T.W * e - 1] = c; T.pix[i + T.W * (1 - e) + 2] = c; T.pix[i + T.W * 2 + 1 - e] = c; }
+    } else if (p.size === 2) {
       if (ix + 1 < T.W) T.pix[i + 1] = c;
       if (iy + 1 < T.H) T.pix[i + T.W] = c;
       if (ix + 1 < T.W && iy + 1 < T.H) T.pix[i + T.W + 1] = c;
@@ -398,19 +411,19 @@ function drawParticles(sceneId) {
 
 /* ---------- lighting grade ---------- */
 // amb: rgb multipliers for unlit pixels; night 0..1 turns on windows and light pools
-const GRADE = { amb: [1, 1, 1], night: 0, warm: [1.28, 1.02, .62], flick: 1, windowGlow: [255, 206, 120] };
+const GRADE = { amb: [1, 1, 1], night: 0, warm: [1.34, 1.04, .6], flick: 1, t: 0, windowGlow: [255, 206, 120] };
 function grade(V) {
   const pix = V.pix, emit = V.emit, kinds = V.kinds, light = V.light, n = pix.length;
   const [ar, ag, ab] = GRADE.amb, night = GRADE.night, [wr, wg, wb] = GRADE.warm, fl = GRADE.flick;
   if (ar === 1 && ag === 1 && ab === 1 && night < .02) return;
-  const glowOn = night > .25, wg0 = GRADE.windowGlow;
+  const glowOn = night > .16, wg0 = GRADE.windowGlow, W = V.W, tt = GRADE.t, ox = V.sceneX;
   for (let i = 0; i < n; i++) {
     const c = pix[i];
     if (!c || emit[i]) continue;
     let r = c & 255, g = c >> 8 & 255, b = c >> 16 & 255;
     if (glowOn && kinds[i] === K_WINDOW) {
-      const lum = (r + g + b) / 765;
-      pix[i] = rgb(wg0[0] * (.75 + lum * .5) * fl, wg0[1] * (.7 + lum * .5) * fl, wg0[2] * (.6 + lum * .6));
+      const lum = (r + g + b) / 765, cf = fl * (1 + Math.sin(tt * 4.3 + ((i % W + ox) >> 3) * 2.1) * .05);
+      pix[i] = rgb(wg0[0] * (.72 + lum * .56) * cf, wg0[1] * (.66 + lum * .6) * cf, wg0[2] * (.52 + lum * .8));
       continue;
     }
     let L = night > .02 ? light[i] / 255 * night * fl : 0;
@@ -432,13 +445,29 @@ function dynamicLight(V, x, y, z, r, k) {
 }
 
 /* ---------- backdrop ---------- */
-// day: warm parchment; dusk: peach to lilac; night: deep navy with stars. Interiors sit in warm dark.
-const BACK = { top: [236, 228, 210], bottom: [244, 238, 222], stars: 0 };
+// day: warm parchment; dusk: peach to lilac; night: deep navy with stars. Slow clouds drift past the island at half the
+// camera's pace, so the land reads as floating. Interiors sit in a warm, dithered pool of dark.
+const BACK = { top: [236, 228, 210], bottom: [244, 238, 222], stars: 0, cloud: 1 };
+const ROOM_GLOW = { x: -1, y: -1, cool: false };
+const ROOM_WARM = [rgb(20, 14, 17), rgb(27, 19, 22), rgb(35, 25, 27), rgb(45, 32, 32)];
+const ROOM_COOL = [rgb(15, 12, 22), rgb(21, 17, 31), rgb(28, 23, 42), rgb(36, 29, 54)];
+// a small tileable cloud field, made once: fbm folded so it wraps in both directions
+const CLOUD_W = 256, CLOUD_H = 128, CLOUDS = new Uint8Array(CLOUD_W * CLOUD_H);
+(function makeClouds() {
+  const f = (x, y) => noise(x * .035, y * .07) * .6 + noise(x * .09 + 40, y * .18) * .28 + noise(x * .22, y * .4 + 9) * .12;
+  for (let y = 0; y < CLOUD_H; y++) for (let x = 0; x < CLOUD_W; x++) {
+    const bx = x / CLOUD_W, by = y / CLOUD_H;
+    const v = (f(x, y) * (1 - bx) + f(x - CLOUD_W, y) * bx) * (1 - by) + (f(x, y - CLOUD_H) * (1 - bx) + f(x - CLOUD_W, y - CLOUD_H) * bx) * by;
+    CLOUDS[y * CLOUD_W + x] = clamp(v * 255, 0, 255);
+  }
+})();
+let backRows = null;
 function fillBackdrop(V, kind, time) {
-  const pix = V.pix, zb = V.zb, W = V.W, H = V.H;
-  let top = BACK.top, bot = BACK.bottom;
-  if (kind === 'room') { top = [26, 19, 22]; bot = [34, 25, 27]; }
-  const rows = new Uint32Array(H * 2);
+  const pix = V.pix, zb = V.zb, W = V.W, H = V.H, room = kind === 'room';
+  if (room) return fillRoomBackdrop(V);
+  const top = BACK.top, bot = BACK.bottom;
+  if (!backRows || backRows.length !== H * 2) backRows = new Uint32Array(H * 2);
+  const rows = backRows;
   for (let y = 0; y < H; y++) {
     const t = y / H;
     for (let k = 0; k < 2; k++) {
@@ -446,24 +475,66 @@ function fillBackdrop(V, kind, time) {
       rows[y * 2 + k] = rgb(lerp(top[0], bot[0], tt), lerp(top[1], bot[1], tt), lerp(top[2], bot[2], tt));
     }
   }
-  const stars = kind !== 'room' ? BACK.stars : 0, ox = V.sceneX, oy = V.sceneY;
-  for (let iy = 0; iy < H; iy++) for (let ix = 0; ix < W; ix++) {
-    const i = iy * W + ix;
-    if (zb[i] > -1e8) continue;
-    const t = iy / H, b = bayerAt(ix, iy);
-    pix[i] = rows[iy * 2 + (b > .5 ? 1 : 0)];
-    if (stars > 0) {
-      const sx = ix + ox, sy = iy + oy;
-      const h = hash(sx * .37 | 0, sy * .41 | 0);
-      if (h > 1 - .004 * stars && hash(sx, sy) > .5) {
-        const tw = STILL ? 1 : .6 + .4 * Math.sin(time * (1 + h * 3) + sx);
-        pix[i] = rgb(lerp(top[0], 255, tw * stars), lerp(top[1], 246, tw * stars), lerp(top[2], 220, tw * stars));
+  const stars = BACK.stars, ox = V.sceneX, oy = V.sceneY, night = GRADE.night;
+  // clouds: lit tops and a shaded underside, tinted by the hour
+  const ck = BACK.cloud, lk = .78 - night * .62, sk = .4 - night * .28;
+  const cl = rgb(lerp(top[0], 255, lk), lerp(top[1], 252, lk), lerp(top[2], 246, lk));
+  const cs = rgb(lerp(bot[0], 196 - night * 90, sk), lerp(bot[1], 190 - night * 90, sk), lerp(bot[2], 206 - night * 60, sk));
+  const drift = STILL ? 0 : Math.floor(time * 1.6), cx0 = (ox >> 1) + drift, cy0 = oy >> 1;
+  const thr = 170 - ck * 13;
+  for (let iy = 0; iy < H; iy++) {
+    const crow = ((iy + cy0) & (CLOUD_H - 1)) * CLOUD_W, crow2 = ((iy + cy0 + 3) & (CLOUD_H - 1)) * CLOUD_W;
+    for (let ix = 0; ix < W; ix++) {
+      const i = iy * W + ix;
+      if (zb[i] > -1e8) continue;
+      const b = bayerAt(ix, iy);
+      pix[i] = rows[iy * 2 + (b > .5 ? 1 : 0)];
+      if (ck > 0) {
+        const cxi = ((ix + cx0) >> 1) & (CLOUD_W - 1), v = CLOUDS[crow + cxi] + (b - .5) * 9;
+        if (v > thr) pix[i] = CLOUDS[crow2 + cxi] > thr + 5 ? cl : cs;
+      }
+      if (stars > 0) {
+        const sx = ix + ox, sy = iy + oy;
+        const h = hash(sx * .37 | 0, sy * .41 | 0);
+        if (h > 1 - .004 * stars && hash(sx, sy) > .5) {
+          const tw = STILL ? 1 : .6 + .4 * Math.sin(time * (1 + h * 3) + sx);
+          pix[i] = rgb(lerp(top[0], 255, tw * stars), lerp(top[1], 246, tw * stars), lerp(top[2], 220, tw * stars));
+        }
       }
     }
-    if (kind === 'room' && t > 0) {
-      // soft dithered vignette toward the edges
-      const e = Math.min(ix, W - ix, iy, H - iy) / 40;
-      if (e < 1 && e < b) pix[i] = rgb(18, 13, 15);
+  }
+}
+// a dithered pool of warm (or arcane) dark that is brightest behind the room and falls away to the screen edges
+function fillRoomBackdrop(V) {
+  const pix = V.pix, zb = V.zb, W = V.W, H = V.H;
+  const ramp = ROOM_GLOW.cool ? ROOM_COOL : ROOM_WARM;
+  const cx = ROOM_GLOW.x < 0 ? W / 2 : ROOM_GLOW.x, cy = ROOM_GLOW.y < 0 ? H / 2 : ROOM_GLOW.y, inv = 1 / (W * .92);
+  for (let iy = 0; iy < H; iy++) {
+    const dy = (iy - cy) * inv * 1.25, dy2 = dy * dy;
+    for (let ix = 0; ix < W; ix++) {
+      const i = iy * W + ix;
+      if (zb[i] > -1e8) continue;
+      const dx = (ix - cx) * inv, d = Math.sqrt(dx * dx + dy2);
+      pix[i] = ramp[clamp(Math.floor((1.02 - d) * 3.4 + bayerAt(ix, iy)), 0, 3)];
+    }
+  }
+}
+
+/* ---------- cloud shadows ---------- */
+// by day, soft patches of shade wander over the land: the same cloud field, laid flat on the ground
+function cloudShadows(V, time, k) {
+  if (k <= .02) return;
+  const pix = V.pix, emit = V.emit, W = V.W, H = V.H, ox = V.sceneX, oy = V.sceneY;
+  const mr = 1 - .13 * k, mg = 1 - .12 * k, mb = 1 - .05 * k;
+  const dx = STILL ? 0 : Math.floor(time * 2.2), dy = STILL ? 0 : Math.floor(time * .7);
+  for (let iy = 0; iy < H; iy++) {
+    const crow = (((iy + oy) * 2 + dy >> 2) & (CLOUD_H - 1)) * CLOUD_W, x0 = ox + dx;
+    for (let ix = 0; ix < W; ix++) {
+      const v = CLOUDS[crow + ((ix + x0 >> 2) & (CLOUD_W - 1))];
+      if (v < 146) continue;
+      const i = iy * W + ix, c = pix[i];
+      if (!c || emit[i] || v < 154 + (bayerAt(ix, iy) - .5) * 14) continue;
+      pix[i] = (255 << 24 | ((c >> 16 & 255) * mb) << 16 | ((c >> 8 & 255) * mg) << 8 | ((c & 255) * mr)) >>> 0;
     }
   }
 }

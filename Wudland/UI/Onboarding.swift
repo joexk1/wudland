@@ -14,24 +14,27 @@ struct Onboarding: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.45).ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 16) {
-                switch page {
-                case 0: welcome
-                case 1: name
-                case 2: permissions
-                default: link
+            Ink.night.opacity(0.5).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 18) {
+                Group {
+                    switch page {
+                    case 0: welcome
+                    case 1: name
+                    case 2: permissions
+                    default: link
+                    }
                 }
+                .id(page)
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 18)), removal: .opacity))
                 dots
             }
-            .padding(22)
+            .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 18)
             .frame(maxWidth: 440)
-            .background(Ink.parchment)
-            .overlay(Rectangle().stroke(Ink.ink, lineWidth: 3))
-            .overlay(Rectangle().stroke(Ink.parchmentShade, lineWidth: 2).padding(5))
-            .shadow(color: .black.opacity(0.35), radius: 0, x: 4, y: 4)
+            // one card, one shadow: the parchment style draws its drop shadow behind the page only, never
+            // under each line of text (a .shadow on the whole stack used to ghost every word)
+            .parchment(ornate: true)
             .padding(20)
-            .animation(.easeOut(duration: 0.2), value: page)
+            .animation(Motion.settle, value: page)
         }
     }
 
@@ -39,7 +42,8 @@ struct Onboarding: View {
 
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Welcome to Wudland").font(Fonts.blackletter(32)).foregroundStyle(Ink.ink)
+            HStack { Spacer(); Image("Lamp").interpolation(.none).resizable().frame(width: 64, height: 64).accessibilityHidden(true); Spacer() }
+            title("Welcome to Wudland", 32)
             Text("A little village where your day lives. Your calendar rings from the bell tower, your reminders go up on the notice board, the farmer watches the weather and the bard knows your music.")
                 .font(Fonts.pixel(15)).foregroundStyle(Ink.inkSoft).fixedSize(horizontal: false, vertical: true)
             Text("Link a computer later and your coding agents move into the guild.")
@@ -50,7 +54,7 @@ struct Onboarding: View {
 
     private var name: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What should we call you?").font(Fonts.blackletter(28)).foregroundStyle(Ink.ink)
+            title("What should we call you?", 28)
             Text("The villagers will greet you by name, and the cottage will be yours.")
                 .font(Fonts.pixel(14)).foregroundStyle(Ink.inkSoft).fixedSize(horizontal: false, vertical: true)
             TextField("", text: $lordName, prompt: Text("Your name").foregroundStyle(Ink.faded))
@@ -61,6 +65,8 @@ struct Onboarding: View {
                 .padding(10).background(Ink.parchmentDeep)
                 .overlay(Rectangle().stroke(Ink.ink, lineWidth: 2))
                 .onChange(of: lordName) { _, v in if v.count > 24 { lordName = String(v.prefix(24)) } }
+                // the field only exists once the page has slid in, so ask for the keyboard then
+                .task { try? await Task.sleep(for: .milliseconds(350)); nameFocused = true }
             HStack {
                 skip("Skip") { lordName = ""; saveName() }
                 Spacer()
@@ -71,7 +77,7 @@ struct Onboarding: View {
 
     private var permissions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Bringing your day in").font(Fonts.blackletter(28)).foregroundStyle(Ink.ink)
+            title("Bringing your day in", 28)
             Text("iOS will ask for a few things. Each one is optional and stays on this phone.")
                 .font(Fonts.pixel(14)).foregroundStyle(Ink.inkSoft).fixedSize(horizontal: false, vertical: true)
             reason("Calendar", "the bell tower rings for what's coming up")
@@ -96,7 +102,7 @@ struct Onboarding: View {
 
     private var link: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Got coding agents?").font(Fonts.blackletter(28)).foregroundStyle(Ink.ink)
+            title("Got coding agents?", 28)
             Text("Install the free Wudland plugins on your computer and link it with the six-digit code in Settings. Claude Code, Codex and opencode sessions then turn up in the guild, working, waiting or done.")
                 .font(Fonts.pixel(14)).foregroundStyle(Ink.inkSoft).fixedSize(horizontal: false, vertical: true)
             Text("Everything they send is end-to-end encrypted. No account needed.")
@@ -110,6 +116,14 @@ struct Onboarding: View {
     }
 
     // MARK: bits
+
+    private func title(_ t: String, _ size: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(t).font(Fonts.blackletter(size)).foregroundStyle(Ink.ink).fixedSize(horizontal: false, vertical: true)
+            Flourish(scale: 1.5)
+        }
+        .accessibilityElement(children: .combine)
+    }
 
     private func saveName() {
         lordName = lordName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -140,7 +154,12 @@ struct Onboarding: View {
     private var dots: some View {
         HStack(spacing: 6) {
             Spacer()
-            ForEach(0..<4) { i in Rectangle().fill(i == page ? Ink.goldDeep : Ink.parchmentShade).frame(width: 8, height: 8) }
+            ForEach(0..<4) { i in
+                Rectangle().fill(i == page ? Ink.gold : Ink.parchmentShade)
+                    .overlay(Rectangle().stroke(i == page ? Ink.goldDeep : .clear, lineWidth: 1.5))
+                    .frame(width: 8, height: 8).rotationEffect(.degrees(45))
+                    .scaleEffect(i == page ? 1.25 : 1)
+            }
             Spacer()
         }
         .accessibilityHidden(true)

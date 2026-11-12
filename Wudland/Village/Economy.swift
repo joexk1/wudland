@@ -78,7 +78,7 @@ final class Economy {
 
     func color(_ rarity: Int) -> Color {
         let c = rarityRGB[min(max(rarity, 0), rarityRGB.count - 1)]
-        return Color(red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255)
+        return Ink.rgb(c)
     }
     /// the catalogue entry for a hat style ("cavalier" -> hat_cavalier), for its picture
     func hatItem(_ style: String) -> ItemDef? { items.values.first { $0.hat == style } }
@@ -141,7 +141,7 @@ struct ItemIcon: View {
             for (y, row) in rows.enumerated() {
                 for (x, ch) in row.enumerated() where ch != "." {
                     guard let c = item.pal[String(ch)] else { continue }
-                    let col = Color(red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255)
+                    let col = Ink.rgb(c)
                     ctx.fill(Path(CGRect(x: CGFloat(x) * scale, y: CGFloat(y) * scale, width: scale, height: scale)), with: .color(col))
                 }
             }
@@ -162,7 +162,7 @@ struct BeastIcon: View {
             for (y, row) in rows.enumerated() {
                 for (x, ch) in row.enumerated() where ch != "." {
                     let col: Color
-                    if seen, let c = beast.pal?[String(ch)] { col = Color(red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255) }
+                    if seen, let c = beast.pal?[String(ch)] { col = Ink.rgb(c) }
                     else { col = Ink.parchmentShade }
                     ctx.fill(Path(CGRect(x: CGFloat(x) * scale, y: CGFloat(y) * scale, width: scale, height: scale)), with: .color(col))
                 }
@@ -206,7 +206,7 @@ struct HatChip: View {
             .background { PixelFrame(step: 2).fill(on ? Ink.gold.opacity(0.45) : Ink.parchmentDeep) }
             .overlay { PixelFrame(step: 2).stroke(on ? Ink.goldDeep : Ink.faded.opacity(0.5), lineWidth: on ? 2.5 : 1.5) }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SquishStyle())
         .accessibilityLabel(item?.name ?? (style == "none" ? "bare head" : style))
         .accessibilityAddTraits(on ? .isSelected : [])
     }
@@ -225,13 +225,10 @@ struct SatchelSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center) {
-                Text("The Satchel").font(Fonts.blackletter(30)).foregroundStyle(Ink.ink)
-                Spacer()
+            SheetHeader(title: "The Satchel", onClose: onClose) {
                 HStack(spacing: 5) { CrownMark(scale: 2.4); Text("\(econ.crowns)").font(Fonts.pixel(18, .bold)).monospacedDigit().contentTransition(.numericText()) }
                     .foregroundStyle(Ink.ink)
                     .accessibilityElement(children: .combine)
-                Button(action: onClose) { PixelIcon(rows: PixelIcon.close, scale: 2.4).padding(8) }.accessibilityLabel("Close")
             }
             HStack(spacing: 6) {
                 tabButton("Satchel", 0); tabButton("Wardrobe", 1); tabButton("Bestiary", 2)
@@ -242,19 +239,14 @@ struct SatchelSheet: View {
             default: satchel
             }
         }
-        .padding(18)
-        .parchment()
+        .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 18)
+        .parchment(ornate: true)
         .padding(12)
         .onAppear { dogName = econ.dog }
     }
 
     private func tabButton(_ t: String, _ i: Int) -> some View {
-        Button { withAnimation(.snappy(duration: 0.2)) { tab = i; picked = nil }; Sound.shared.play("tap") } label: {
-            Text(t).font(Fonts.pixel(13, .semibold))
-                .foregroundStyle(tab == i ? Ink.parchment : Ink.inkSoft)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background { if tab == i { PixelFrame(step: 2).fill(Ink.ink) } else { PixelFrame(step: 2).stroke(Ink.faded, lineWidth: 1.5) } }
-        }.buttonStyle(.plain)
+        PixelTab(title: t, on: tab == i) { withAnimation(.snappy(duration: 0.2)) { tab = i; picked = nil }; Sound.shared.play("tap"); Haptics.play("soft") }
     }
 
     // the bag
@@ -291,7 +283,7 @@ struct SatchelSheet: View {
                     if econ.placed.contains(h.id) { PixelIcon(rows: [".X.", "XXX", "X.X"], color: Ink.leaf, scale: 2).padding(4) }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SquishStyle(scale: 0.9))
         .accessibilityLabel("\(it?.name ?? h.id), \(h.n)")
     }
     private func detail(_ it: ItemDef) -> some View {
@@ -359,8 +351,8 @@ struct SatchelSheet: View {
             HStack {
                 TextField("", text: $dogName, prompt: Text("name").foregroundStyle(Ink.faded))
                     .font(Fonts.pixel(15)).foregroundStyle(Ink.ink).textInputAutocapitalization(.words).autocorrectionDisabled()
-                    .padding(.horizontal, 10).padding(.vertical, 7)
-                    .background { PixelFrame(step: 2).fill(Ink.parchmentDeep) }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background { PixelFrame(step: 2).fill(Ink.parchmentDeep); PixelFrame(step: 2).stroke(Ink.inkSoft, lineWidth: 2) }
                     .onSubmit { game.nameDog(dogName) }
                 Button("Rename") { game.nameDog(dogName); Sound.shared.play("woof") }.buttonStyle(PixelButtonStyle()).font(Fonts.pixel(13))
             }
@@ -378,7 +370,7 @@ struct SatchelSheet: View {
     /// "Walk with me", or a quiet "by your side" for whoever is already following
     @ViewBuilder private func companionButton(_ id: String) -> some View {
         if econ.companion == id {
-            HStack(spacing: 4) { PixelIcon(rows: [".X.X.", "XXXXX", ".XXX.", "..X.."], color: Color(red: 0.86, green: 0.36, blue: 0.42), scale: 1.6); Text("by your side").font(Fonts.pixel(11, .semibold)) }
+            HStack(spacing: 4) { PixelIcon(rows: [".X.X.", "XXXXX", ".XXX.", "..X.."], color: Ink.rose, scale: 1.6); Text("by your side").font(Fonts.pixel(11, .semibold)) }
                 .foregroundStyle(Ink.inkSoft)
         } else {
             Button("Walk with me") { game.setCompanion(id); Haptics.play("success") }
@@ -468,11 +460,12 @@ struct WaresView: View {
         .onAppear { game.requestStock(npc) }
     }
     private func seg(_ t: String, _ i: Int) -> some View {
-        Button { withAnimation(.snappy(duration: 0.2)) { mode = i }; Sound.shared.play("tap") } label: {
+        Button { withAnimation(.snappy(duration: 0.2)) { mode = i }; Sound.shared.play("tap"); Haptics.play("soft") } label: {
             Text(t).font(Fonts.pixel(13, .semibold)).foregroundStyle(mode == i ? Ink.ink : Ink.faded)
-                .padding(.horizontal, 4).padding(.bottom, 3)
+                .padding(.horizontal, 6).padding(.bottom, 3)
                 .overlay(alignment: .bottom) { if mode == i { Rectangle().fill(Ink.goldDeep).frame(height: 2) } }
-        }.buttonStyle(.plain)
+                .frame(minHeight: 36)
+        }.buttonStyle(SquishStyle())
     }
     @ViewBuilder private var buyList: some View {
         let wares = econ.stock[npc] ?? []
@@ -480,7 +473,7 @@ struct WaresView: View {
         ForEach(wares) { w in
             let it = econ.items[w.id]
             row(it, sub: w.qty > 0 ? "\(it?.desc ?? "")" : "sold out", faded: w.qty == 0) {
-                Button { game.buy(npc, w.id) } label: { HStack(spacing: 3) { Text("\(w.price)"); CrownMark(scale: 1.6) } }
+                Button { Haptics.play("light"); game.buy(npc, w.id) } label: { HStack(spacing: 3) { Text("\(w.price)"); CrownMark(scale: 1.6) } }
                     .buttonStyle(PixelButtonStyle(fill: econ.crowns >= w.price && w.qty > 0 ? Ink.gold : Ink.parchmentDeep)).font(Fonts.pixel(13))
                     .disabled(econ.crowns < w.price || w.qty == 0)
                     .accessibilityLabel("Buy for \(w.price) crowns")
@@ -495,7 +488,7 @@ struct WaresView: View {
         ForEach(sellable) { h in
             let it = econ.items[h.id], price = offers[h.id] ?? 0
             row(it, sub: "you have \(h.n)", faded: false) {
-                Button { game.sell(npc, h.id) } label: { HStack(spacing: 3) { Text("+\(price)"); CrownMark(scale: 1.6) } }
+                Button { Haptics.play("light"); game.sell(npc, h.id) } label: { HStack(spacing: 3) { Text("+\(price)"); CrownMark(scale: 1.6) } }
                     .buttonStyle(PixelButtonStyle()).font(Fonts.pixel(13))
                     .accessibilityLabel("Sell for \(price) crowns")
             }
@@ -537,6 +530,7 @@ struct ToastView: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(minHeight: 48)
         .parchment(step: 2)
         .overlay { if toast.rarity >= 2 { PixelFrame(step: 2).stroke(econ.color(toast.rarity), lineWidth: 2).padding(3) } }
         .padding(.horizontal, 22)

@@ -29,7 +29,9 @@ struct RootView: View {
     @State private var card: Card?
     @State private var showSplash = true
     @AppStorage("onboarded") private var onboarded = false
+    @AppStorage("guided") private var guided = false
     @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geo in
@@ -39,24 +41,24 @@ struct RootView: View {
                     .ignoresSafeArea()
                     .opacity(game.ready ? 1 : 0)
 
-                if talking == nil && card == nil { hud.transition(.opacity) }
+                if talking == nil && card == nil && !game.webCardOpen { hud.transition(.opacity) }
 
                 panel(height: geo.size.height)
 
                 if let t = game.economy.toast, card == nil {
                     VStack { ToastView(toast: t, econ: game.economy).padding(.top, 70); Spacer() }
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(slide(from: .top))
                         .allowsHitTesting(false)
                         .id(t.id)
                 }
 
                 if let card {
-                    Color.black.opacity(0.35).ignoresSafeArea()
+                    Ink.scrim.ignoresSafeArea()
                         .onTapGesture { close(card) }
                         .transition(.opacity)
                     cardView(card)
                         .frame(maxWidth: 460, maxHeight: geo.size.height * 0.78)
-                        .transition(.scale(scale: 0.92).combined(with: .opacity))
+                        .transition(cardTransition)
                 }
 
                 if !onboarded && !showSplash && game.ready {
@@ -67,13 +69,19 @@ struct RootView: View {
                     }
                     .transition(.opacity)
                 }
-                if showSplash { Splash().transition(.opacity) }
+                if onboarded && !guided && !showSplash && game.ready && card == nil && talking == nil && game.sceneID == "village" {
+                    FirstGuide(game: game) { withAnimation(.easeOut(duration: 0.25)) { guided = true } }
+                        .transition(.opacity)
+                }
+                if showSplash { Splash().transition(splashTransition) }
             }
-            .animation(.spring(duration: 0.38, bounce: 0.18), value: talkKey)
-            .animation(.easeOut(duration: 0.22), value: card?.id)
+            .animation(Motion.of(Motion.settle, reduce: reduceMotion), value: talkKey)
+            .animation(Motion.of(Motion.pop, reduce: reduceMotion), value: card?.id)
+            .animation(.easeOut(duration: 0.18), value: game.webCardOpen)
         }
         .onAppear(perform: boot)
         .onDisappear { store.stop(); book.close(); game.onEvent = nil; game.setPaused(true); Sound.shared.pause() }
+        .onChange(of: reduceMotion) { _, on in game.setReduceMotion(on) }
         .onChange(of: phase) { _, p in
             switch p {
             case .active:
@@ -90,6 +98,18 @@ struct RootView: View {
 
     private var talkKey: Int { switch talking { case .none: 0; case .villager: 1; case .wizard: 2 } }
 
+    /// cards pop up from a touch below where they land; panels rise from the bottom edge
+    private var cardTransition: AnyTransition {
+        reduceMotion ? AnyTransition.opacity : AnyTransition.scale(scale: 0.9).combined(with: .offset(y: 14)).combined(with: .opacity)
+    }
+    private var panelTransition: AnyTransition { slide(from: .bottom) }
+    private var splashTransition: AnyTransition {
+        reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .scale(scale: 1.06))
+    }
+    private func slide(from edge: Edge) -> AnyTransition {
+        reduceMotion ? AnyTransition.opacity : AnyTransition.move(edge: edge).combined(with: .opacity)
+    }
+
     // MARK: - HUD
 
     private var hud: some View {
@@ -100,10 +120,10 @@ struct RootView: View {
                         HStack(spacing: 6) { PixelIcon(rows: PixelIcon.back, scale: 2.2); Text("Village") }
                     }
                     .buttonStyle(PixelButtonStyle())
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .transition(slide(from: .leading))
                 }
                 Spacer()
-                Button { Sound.shared.play("tap"); card = .settings } label: {
+                Button { Sound.shared.play("tap"); Haptics.play("light"); card = .settings } label: {
                     PixelIcon(rows: PixelIcon.cog, scale: 2.6).padding(2)
                 }
                 .buttonStyle(PixelButtonStyle())
@@ -112,15 +132,23 @@ struct RootView: View {
             .overlay { ribbon }
             Spacer()
             HStack(alignment: .bottom) {
-                if game.sceneID == "village" { pills.transition(.move(edge: .bottom).combined(with: .opacity)) }
+                if game.sceneID == "village" { pills.transition(slide(from: .bottom)) }
+                if game.sceneID == "home" {
+                    HStack(spacing: 8) {
+                        Button("Sleep") { Sound.shared.play("tap"); Haptics.play("light"); game.sleep() }.buttonStyle(PixelButtonStyle()).font(Fonts.pixel(14))
+                        Button("Arrange") { Sound.shared.play("tap"); Haptics.play("light"); game.arrange() }.buttonStyle(PixelButtonStyle()).font(Fonts.pixel(14))
+                    }.transition(slide(from: .bottom))
+                }
                 Spacer(minLength: 8)
+                Button { Sound.shared.play("tap"); Haptics.play("light"); game.quests() } label: { PixelIcon(rows: PixelIcon.note, color: Ink.ink, scale: 2.2).padding(2) }
+                    .buttonStyle(PixelButtonStyle()).accessibilityLabel("Today's errands")
                 satchelButton
             }
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 10)
-        .animation(.easeOut(duration: 0.25), value: game.sceneID)
+        .animation(Motion.of(Motion.settle, reduce: reduceMotion), value: game.sceneID)
     }
 
     private var ribbon: some View {
@@ -128,22 +156,28 @@ struct RootView: View {
             Text(game.sceneTitle)
                 .font(Fonts.blackletter(game.sceneID == "village" ? 34 : 28))
                 .foregroundStyle(Ink.parchment)
-                .shadow(color: .black.opacity(0.7), radius: 0, x: 2, y: 2)
+                .shadow(color: Ink.night.opacity(0.75), radius: 0, x: 2, y: 2)
                 .lineLimit(1).minimumScaleFactor(0.6)
                 .id(game.sceneTitle)
                 .transition(.opacity)
+            // a storybook rule under the name of the place
+            Flourish(color: Ink.parchment, scale: 1.6)
+                .shadow(color: Ink.night.opacity(0.75), radius: 0, x: 1, y: 1)
+                .padding(.top, -3).padding(.bottom, 1)
             if game.sceneID == "village", let w = store.village.weather {
                 HStack(spacing: 5) {
                     PixelIcon(rows: weatherIcon(w.kind), color: Ink.parchment, scale: 1.6)
                     Text("\(w.temp)\u{00B0} \u{00B7} \(w.kind)").font(Fonts.pixel(12, .medium)).foregroundStyle(Ink.parchment)
                 }
-                .shadow(color: .black.opacity(0.7), radius: 0, x: 1, y: 1)
+                .shadow(color: Ink.night.opacity(0.75), radius: 0, x: 1, y: 1)
             }
             if store.offline {
                 HStack(spacing: 4) {
                     PixelIcon(rows: PixelIcon.raven, color: Ink.gold, scale: 1.6)
                     Text("the raven is lost \u{00B7} old news").font(Fonts.pixel(11)).foregroundStyle(Ink.gold)
                 }
+                .shadow(color: Ink.night.opacity(0.75), radius: 0, x: 1, y: 1)
+                .transition(.opacity)
             }
         }
         .padding(.top, 2)
@@ -203,14 +237,14 @@ struct RootView: View {
                 DialogueView(convo: convo, store: store, game: game, trades: trades, onClose: endTalk)
                     .frame(height: height * 0.5)
             }
-            .transition(.move(edge: .bottom))
+            .transition(panelTransition)
         case .wizard:
             VStack {
                 Spacer()
                 SpellbookView(book: book, onClose: endTalk)
                     .frame(height: height * 0.62)
             }
-            .transition(.move(edge: .bottom))
+            .transition(panelTransition)
         case .none:
             EmptyView()
         }
@@ -256,7 +290,7 @@ struct RootView: View {
     }
 
     private func close(_ c: Card) {
-        Sound.shared.play("tap")
+        Sound.shared.play("tap"); Haptics.play("soft")
         card = nil
         game.endTalk()
     }
@@ -279,8 +313,8 @@ struct RootView: View {
             case .inspect(let what):
                 switch what {
                 case "board": startTalk(npc: "board", name: "Notice Board", agent: nil, chat: nil)
-                case "scroll": card = .scroll
-                case "mirror": card = .mirror
+                case "scroll": Sound.shared.play("page"); card = .scroll
+                case "mirror": Sound.shared.play("open"); card = .mirror
                 default: break
                 }
             case .endTalk:
@@ -315,19 +349,23 @@ struct RootView: View {
 
 private struct Splash: View {
     @State private var glow = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
             Ink.night.ignoresSafeArea()
-            VStack(spacing: 18) {
+            VStack(spacing: 14) {
+                // the lamp is 32 x 32 pixel art: 128 pt keeps every pixel a whole number of screen pixels at 2x and 3x
                 Image("Lamp")
                     .interpolation(.none)
                     .resizable()
-                    .frame(width: 96, height: 96)
-                    .shadow(color: Ink.gold.opacity(glow ? 0.8 : 0.3), radius: glow ? 26 : 10)
-                Text("Wudland").font(Fonts.blackletter(54)).foregroundStyle(Ink.parchment)
+                    .frame(width: 128, height: 128)
+                    .shadow(color: Ink.gold.opacity(glow ? 0.75 : 0.3), radius: glow ? 30 : 12)
+                    .offset(y: glow && !reduceMotion ? -4 : 2)
+                Text("Wudland").font(Fonts.blackletter(56)).foregroundStyle(Ink.parchment)
+                Flourish(color: Ink.goldDeep, scale: 2).padding(.top, -8)
                 Text("lighting the lamps\u{2026}").font(Fonts.pixel(13)).foregroundStyle(Ink.faded)
             }
         }
-        .onAppear { withAnimation(.easeInOut(duration: 1.1).repeatForever()) { glow = true } }
+        .onAppear { withAnimation(.easeInOut(duration: reduceMotion ? 2.2 : 1.3).repeatForever(autoreverses: true)) { glow = true } }
     }
 }

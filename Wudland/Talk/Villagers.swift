@@ -42,9 +42,26 @@ enum Cast {
     """
     }
 
+    static var frontier: [String: (String, String, Double, String, String, [String])] {
+        let t = "m'lord"
+        return [
+            "merchant": ("the Aimless Merchant, who wanders the whole island with two laden moth-mules and sells odd exclusive goods", "breezy, evasive, always about to leave", 430, "Stock changes every two hours.", "Oh! Is this a place? Wonderful. Buying or selling, \(t)? I forget which I do.", ["Where have you been?", "Where do you go next?", "What is rarest?"]),
+            "marisol": ("Captain Marisol, harbourmaster of the pier and owner of most of the boats", "brisk, salty, secretly sentimental", 390, "Sea Glass and Kraken Ink come in with the nets.", "Tide's kind today, \(t). Mind the third plank.", ["What's washed up?", "Any boats going out?", "Tell me a sea story"]),
+            "moss": ("Old Moss the Woodward, keeper of the Whisperwood", "slow, soft, speaks of trees as neighbours", 300, "Fern Seed can be found in the Whisperwood. Glowhorn Stags come at night.", "...ah. You walk loudly, \(t). The ferns forgive you.", ["What grows here?", "Is anything watching me?", "Which tree is oldest?"]),
+            "ignatia": ("Ignatia the Mountain Warden, who keeps the beacon fire beneath the peaks", "blunt, proud, a bit singed", 410, "Peak Amethyst can be found high in the mountains.", "Mind the loose stones, \(t). The mountain keeps score.", ["What is up there?", "Why keep the fire?", "Seen anything strange?"]),
+            "pip": ("Pip the Climber, camped at the foot of the peaks and forever about to climb them", "chirpy, sunburnt, full of tomorrow's plans", 500, "The camp sits on the meadow below the peaks. Peak Amethyst can be found higher up.", "Stew's nearly on, \(t)! Climbing tomorrow. Definitely tomorrow.", ["Have you reached the top?", "What's in the stew?", "Any good views?"]),
+            "bryn": ("Bryn the Shepherd, who minds a small flock on the alpine meadow below the peaks", "gentle, unhurried, names every sheep", 360, "A waterfall feeds the tarn up here. Wildflowers grow in drifts on the meadow.", "Mind Clover, \(t). She bites, but only people she likes.", ["Name your sheep", "What is the tarn like?", "Is it lonely up here?"]),
+            "hobb": ("Hobb the Net-Mender, an old harbour hand", "gruff, long pauses, kind", 280, "", "Mm. \(t.capitalized). Nets don't mend themselves.", ["How's the catch?", "Seen anything odd?"]),
+            "tamsin": ("Tamsin the Lamplighter, who walks every road lighting lamps", "cheerful, a bit tired, loves dusk", 520, "", "Evening's the best bit, \(t). I get to start it.", ["Which road is prettiest?", "Are you ever done?"]),
+        ]
+    }
+
     static func make(_ id: String, name: String, v: Village, agent: AgentNode? = nil, chat: Chat? = nil) -> Villager {
         let mail = v.mail, wa = v.whatsapp, cal = v.calendar, notes = v.notices, wx = v.weather, ag = v.agents
         switch id {
+        case "merchant", "marisol", "moss", "ignatia", "hobb", "tamsin", "bryn", "pip":
+            let m = Self.frontier[id]!
+            return Villager(id: id, name: name, role: m.0, voice: m.1, pitch: m.2, facts: m.3, greeting: m.4, asks: m.5)
         case "pim":
             let letters = mail?.letters ?? []
             let unread = letters.filter(\.unread)

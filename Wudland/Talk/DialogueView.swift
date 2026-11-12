@@ -24,7 +24,7 @@ struct DialogueView: View {
             if tab == 0 { chips; input }
         }
         .padding(.top, 4)
-        .parchment(step: 3)
+        .parchment(step: 3, ornate: true)
         .overlay(alignment: .topLeading) {
             // a fixed slot: the plate hugs short names and shrinks long ones before they reach the tabs
             namePlate.frame(width: 190, alignment: .leading).offset(x: 14, y: -16)
@@ -48,18 +48,12 @@ struct DialogueView: View {
             if hasLedger || trades { tabButton("Talk", 0) }
             if hasLedger { tabButton(ledgerTitle, 1) }
             if trades { tabButton("Wares", 2) }
-            Button { onClose() } label: { PixelIcon(rows: PixelIcon.close, color: Ink.ink, scale: 2.4).padding(10) }
-                .accessibilityLabel("Say goodbye")
+            CloseButton(label: "Say goodbye", action: onClose)
         }
         .padding(.leading, 14).padding(.trailing, 4).padding(.top, hasLedger || trades ? 22 : 10)
     }
     private func tabButton(_ title: String, _ i: Int) -> some View {
-        Button { withAnimation(.snappy(duration: 0.2)) { tab = i }; Sound.shared.play("tap"); Haptics.play("soft") } label: {
-            Text(title).font(Fonts.pixel(13, .semibold))
-                .foregroundStyle(tab == i ? Ink.parchment : Ink.inkSoft)
-                .padding(.horizontal, 9).padding(.vertical, 5)
-                .background { if tab == i { PixelFrame(step: 2).fill(Ink.ink) } else { PixelFrame(step: 2).stroke(Ink.faded, lineWidth: 1.5) } }
-        }.buttonStyle(.plain)
+        PixelTab(title: title, on: tab == i) { withAnimation(.snappy(duration: 0.2)) { tab = i }; Sound.shared.play("tap"); Haptics.play("soft") }
     }
     private var ledgerTitle: String {
         switch v.ledger {
@@ -104,6 +98,7 @@ struct DialogueView: View {
                     Color.clear.frame(height: 1).id("end")
                 }
                 .padding(.horizontal, 18).padding(.vertical, 8)
+                .animation(Motion.settle, value: convo.lines.count)
             }
             .scrollIndicators(.hidden)
             .onChange(of: convo.lines.last?.text) { proxy.scrollTo("end", anchor: .bottom) }
@@ -148,7 +143,7 @@ struct DialogueView: View {
     }
     private func send() {
         let t = draft; draft = ""
-        Sound.shared.play("tap")
+        Sound.shared.play("tap"); Haptics.play("light")
         convo.ask(t)
     }
 
@@ -186,7 +181,7 @@ struct DialogueView: View {
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) { DottedRule() }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SquishStyle(scale: 0.985))
     }
     private func letterRow(_ l: Letter) -> some View {
         let unread = l.unread && !markedRead.contains(l.id)
@@ -197,10 +192,11 @@ struct DialogueView: View {
             if unread {
                 Button { Task { LinkHub.shared.markRead(l.id); markedRead.insert(l.id); Sound.shared.play("coin"); Haptics.play("success"); await store.refresh() } } label: {
                     Text("seal").font(Fonts.pixel(11, .semibold)).foregroundStyle(Ink.inkSoft)
-                        .padding(.horizontal, 7).padding(.vertical, 4)
+                        .padding(.horizontal, 8).padding(.vertical, 5)
                         .background { PixelFrame(step: 2).stroke(Ink.faded, lineWidth: 1.5) }
+                        .frame(minWidth: 44, minHeight: 40)
                 }
-                .buttonStyle(.plain).padding(.leading, 6)
+                .buttonStyle(SquishStyle()).padding(.leading, 6)
                 .accessibilityLabel("Mark as read")
             }
         }
@@ -227,7 +223,7 @@ struct DialogueView: View {
             fact("Tool calls", "\(n.tool_calls ?? 0)")
             Text("Recent work").font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft).padding(.top, 6)
             ForEach(Array((n.detail ?? []).enumerated()), id: \.offset) { _, d in
-                Text(d).font(.system(size: 12, design: .monospaced)).foregroundStyle(Ink.ink).lineLimit(3)
+                Text(d).font(Fonts.pixel(12)).foregroundStyle(Ink.ink).lineLimit(3)
                     .padding(.vertical, 3).overlay(alignment: .bottom) { DottedRule() }
             }
         }
@@ -286,8 +282,9 @@ struct ThinkingDots: View {
     let timer = Timer.publish(every: 0.28, on: .main, in: .common).autoconnect()
     var body: some View {
         HStack(spacing: 5) {
-            ForEach(0..<3) { i in Rectangle().fill(Ink.inkSoft).frame(width: 5, height: 5).offset(y: phase == i ? -3 : 0) }
+            ForEach(0..<3) { i in Rectangle().fill(Ink.inkSoft).frame(width: 5, height: 5).offset(y: phase == i ? -4 : 0) }
         }
+        .animation(Motion.press, value: phase)
         .padding(.vertical, 8)
         .onReceive(timer) { _ in phase = (phase + 1) % 3 }
         .accessibilityLabel("Thinking")

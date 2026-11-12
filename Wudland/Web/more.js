@@ -154,6 +154,7 @@ function moreFinds(t, m) {
   if (m.snow || m.season === 'winter') t.push(['o_frost', .08], ['n_scarf', .8]);
   if (m.storm) t.push(['b_dragon', .1]);
   if (m.clear && !m.night) t.push(['b_fae', .05], ['emerald', .15], ['hat_flowers', .6]);
+  frontierFinds(t, m);
   if (m.luck) for (const row of t) if (ITEMS[row[0]]?.rarity >= 2) row[1] *= 3;
 }
 

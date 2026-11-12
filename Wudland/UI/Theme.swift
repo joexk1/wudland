@@ -13,11 +13,35 @@ enum Ink {
     static let red = Color(red: 0.77, green: 0.25, blue: 0.20)
     static let leaf = Color(red: 0.40, green: 0.53, blue: 0.36)
     static let night = Color(red: 0.10, green: 0.08, blue: 0.10)
+    static let rose = Color(red: 0.86, green: 0.36, blue: 0.42)       // hearts, "by your side"
+    /// what dims the village behind a card (the web cards use the same wash)
+    static let scrim = night.opacity(0.35)
+    /// the inner highlight on parchment
+    static let sheen = Color(red: 1, green: 0.99, blue: 0.95).opacity(0.5)
     // the spellbook
     static let leather = Color(red: 0.24, green: 0.15, blue: 0.30)
     static let leatherDeep = Color(red: 0.14, green: 0.08, blue: 0.18)
     static let arcane = Color(red: 0.70, green: 0.60, blue: 1.0)
     static let quill = Color(red: 0.18, green: 0.26, blue: 0.46)
+
+    /// a colour from the canvas's 0-255 palette triples (item icons, swatches, rarity)
+    static func rgb(_ c: [Int]) -> Color {
+        guard c.count >= 3 else { return ink }
+        return Color(red: Double(c[0]) / 255, green: Double(c[1]) / 255, blue: Double(c[2]) / 255)
+    }
+}
+
+/// How things move: a little bounce, like something set down by hand. Everything falls back to a short fade
+/// when Reduce Motion is on.
+enum Motion {
+    /// cards and toasts popping into place
+    static let pop = Animation.spring(response: 0.36, dampingFraction: 0.68)
+    /// panels sliding up, things settling
+    static let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
+    /// a button springing back under a thumb
+    static let press = Animation.spring(response: 0.24, dampingFraction: 0.5)
+    static let quick = Animation.easeOut(duration: 0.16)
+    static func of(_ a: Animation, reduce: Bool) -> Animation { reduce ? .easeOut(duration: 0.15) : a }
 }
 
 enum Fonts {
@@ -62,16 +86,49 @@ struct Parchment: ViewModifier {
     var line: Color = Ink.ink
     var step: CGFloat = 3
     var shadow = true
+    /// storybook corners: a small gilt curl tucked into each corner of the page
+    var ornate = false
     func body(content: Content) -> some View {
         content
             .background {
                 ZStack {
                     if shadow { PixelFrame(step: step).fill(line.opacity(0.35)).offset(y: step) }
                     PixelFrame(step: step).fill(fill)
-                    PixelFrame(step: step).inset(by: step).stroke(Color.white.opacity(0.45), lineWidth: 1.5).padding(1)
+                    PixelFrame(step: step).inset(by: step).stroke(Ink.sheen, lineWidth: 1.5).padding(1)
                     PixelFrame(step: step).stroke(line, lineWidth: step)
+                    if ornate { CornerCurls(inset: step * 2 + 1) }
                 }
             }
+    }
+}
+
+/// Four little gilt corner curls, mirrored round a frame.
+struct CornerCurls: View {
+    var color: Color = Ink.goldDeep.opacity(0.55)
+    var inset: CGFloat = 7
+    var scale: CGFloat = 2
+    private static let rows = ["XXXX.", "X....", "X.X..", "X....", "....."]
+    var body: some View {
+        ZStack {
+            curl.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            curl.scaleEffect(x: -1).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            curl.scaleEffect(y: -1).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            curl.scaleEffect(x: -1, y: -1).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        }
+        .padding(inset)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+    private var curl: some View { PixelIcon(rows: Self.rows, color: color, scale: scale) }
+}
+
+/// A storybook rule: a run of dots either side of a small diamond. Sits under titles.
+struct Flourish: View {
+    var color: Color = Ink.goldDeep
+    var scale: CGFloat = 2
+    private static let rows = ["..............X..............", "X.X.X.X.X.X.XXXXX.X.X.X.X.X.X", "..............X.............."]
+    var body: some View {
+        PixelIcon(rows: Self.rows, color: color, scale: scale).accessibilityHidden(true)
     }
 }
 extension PixelFrame: InsettableShape {
@@ -83,29 +140,124 @@ extension PixelFrame: InsettableShape {
     }
 }
 extension View {
-    func parchment(_ fill: Color = Ink.parchment, line: Color = Ink.ink, step: CGFloat = 3, shadow: Bool = true) -> some View {
-        modifier(Parchment(fill: fill, line: line, step: step, shadow: shadow))
+    func parchment(_ fill: Color = Ink.parchment, line: Color = Ink.ink, step: CGFloat = 3, shadow: Bool = true, ornate: Bool = false) -> some View {
+        modifier(Parchment(fill: fill, line: line, step: step, shadow: shadow, ornate: ornate))
     }
 }
 
-/// A chunky pixel button that presses down.
+/// A chunky pixel button that squashes down under a thumb and springs back.
 struct PixelButtonStyle: ButtonStyle {
     var fill: Color = Ink.parchmentDeep
     var ink: Color = Ink.ink
     func makeBody(configuration: Configuration) -> some View {
+        PixelButtonBody(configuration: configuration, fill: fill, ink: ink)
+    }
+}
+private struct PixelButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let fill: Color
+    let ink: Color
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        let down = configuration.isPressed
         configuration.label
             .font(Fonts.pixel(15, .medium))
             .foregroundStyle(ink)
             .padding(.horizontal, 12).padding(.vertical, 8)
+            .frame(minHeight: 40)
             .background {
                 ZStack {
-                    PixelFrame(step: 2).fill(ink.opacity(0.4)).offset(y: configuration.isPressed ? 0 : 2.5)
-                    PixelFrame(step: 2).fill(configuration.isPressed ? fill.opacity(0.75) : fill)
+                    PixelFrame(step: 2).fill(ink.opacity(0.4)).offset(y: down ? 0 : 2.5)
+                    PixelFrame(step: 2).fill(fill)
+                    if down { PixelFrame(step: 2).fill(ink.opacity(0.1)) }
+                    PixelFrame(step: 2).inset(by: 2).stroke(Ink.sheen.opacity(down ? 0 : 0.8), lineWidth: 1).padding(1)
                     PixelFrame(step: 2).stroke(ink, lineWidth: 2)
                 }
             }
-            .offset(y: configuration.isPressed ? 2 : 0)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .offset(y: down ? 2 : 0)
+            .scaleEffect(x: down && !reduceMotion ? 1.03 : 1, y: down && !reduceMotion ? 0.95 : 1, anchor: .bottom)
+            .opacity(isEnabled ? 1 : 0.55)
+            .contentShape(Rectangle())
+            .animation(down ? .easeOut(duration: 0.06) : Motion.of(Motion.press, reduce: reduceMotion), value: down)
+    }
+}
+
+/// For tiles, tabs and icon buttons that draw themselves: a gentle squish when pressed.
+struct SquishStyle: ButtonStyle {
+    var scale: CGFloat = 0.92
+    func makeBody(configuration: Configuration) -> some View {
+        SquishBody(configuration: configuration, scale: scale)
+    }
+}
+private struct SquishBody: View {
+    let configuration: ButtonStyleConfiguration
+    let scale: CGFloat
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        let down = configuration.isPressed
+        configuration.label
+            .scaleEffect(down && !reduceMotion ? scale : 1)
+            .opacity(down ? 0.8 : (isEnabled ? 1 : 0.5))
+            .contentShape(Rectangle())
+            .animation(down ? .easeOut(duration: 0.06) : Motion.of(Motion.press, reduce: reduceMotion), value: down)
+    }
+}
+
+/// The little cross that closes a card, with a full-size place to put a thumb.
+struct CloseButton: View {
+    var label = "Close"
+    var action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            PixelIcon(rows: PixelIcon.close, color: Ink.ink, scale: 2.4).frame(width: 44, height: 44)
+        }
+        .buttonStyle(SquishStyle(scale: 0.8))
+        .accessibilityLabel(label)
+    }
+}
+
+/// The top of every parchment card: a blackletter title, something optional on the right, the cross, and a flourish.
+struct SheetHeader<Accessory: View>: View {
+    let title: String
+    let onClose: () -> Void
+    let accessory: Accessory
+    init(title: String, onClose: @escaping () -> Void, @ViewBuilder accessory: () -> Accessory) {
+        self.title = title; self.onClose = onClose; self.accessory = accessory()
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(title).font(Fonts.blackletter(30)).foregroundStyle(Ink.ink).lineLimit(1).minimumScaleFactor(0.7)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
+                accessory
+                CloseButton(action: onClose).padding(.trailing, -10)
+            }
+            Flourish().padding(.top, -4)
+        }
+    }
+}
+extension SheetHeader where Accessory == EmptyView {
+    init(title: String, onClose: @escaping () -> Void) { self.init(title: title, onClose: onClose, accessory: { EmptyView() }) }
+}
+
+/// A tab drawn as an inked plate when chosen and an outline when not (dialogue tabs, the satchel).
+struct PixelTab: View {
+    let title: String
+    let on: Bool
+    var action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(title).font(Fonts.pixel(13, .semibold))
+                .foregroundStyle(on ? Ink.parchment : Ink.inkSoft)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background { if on { PixelFrame(step: 2).fill(Ink.ink) } else { PixelFrame(step: 2).stroke(Ink.faded, lineWidth: 1.5) } }
+                .frame(minHeight: 36)
+        }
+        .buttonStyle(SquishStyle())
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 

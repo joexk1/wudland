@@ -53,11 +53,12 @@ function makeTarget(W, H, S, OX, OY) {
     kinds: new Uint8Array(n), emit: new Uint8Array(n), pick: new Uint8Array(n), shadow: new Uint8Array(n),
   };
 }
+let ORG = null, ORG_U = 0, ORG_V = 0; // furniture being baked: where it has been moved to, and where it really is
 let T = null; // the current target every draw call writes to
 let PICK = 0, KIND = 0, EMIT = 0; // stamped into the pick / kinds / emit buffers while baking
 
 function project(x, y, z) {
-  const u = (x - y) / R2, v = (x + y) / R2;
+  if (ORG) { ORG.n++; ORG.x += x; ORG.y += y; ORG.z += z; } const u = (x - y + ORG_U) / R2, v = (x + y + ORG_V) / R2;
   return { sx: T.OX + u * T.S, sy: T.OY + (v * SIN - z * COS) * T.S, d: v * COS + z * SIN };
 }
 function unproject(sx, sy, z = 0) {
@@ -142,7 +143,7 @@ function quad(o, eu, ev, shade, tri = false, nrm = null) {
       const fb = b / nv;
       if (tri && fa + fb > 1.0001) break;
       const x = o[0] + eu[0] * fa + ev[0] * fb, y = o[1] + eu[1] * fa + ev[1] * fb, z = o[2] + eu[2] * fa + ev[2] * fb;
-      const u = (x - y) / R2, v = (x + y) / R2;
+      if (ORG) { ORG.n++; ORG.x += x; ORG.y += y; ORG.z += z; } const u = (x - y + ORG_U) / R2, v = (x + y + ORG_V) / R2;
       const ix = (T.OX + u * T.S) | 0, iy = (T.OY + (v * SIN - z * COS) * T.S) | 0;
       if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
       const i = iy * W + ix, d = v * COS + z * SIN;
@@ -189,7 +190,7 @@ function cylinder(cx, cy, z0, z1, r, shade, a0 = -Math.PI * .75, a1 = Math.PI * 
     const base = levelOf(nx, ny, 0);
     for (let b = 0; b <= nz; b++) {
       const z = lerp(z0, z1, b / nz), x = cx + nx * r, y = cy + ny * r;
-      const u = (x - y) / R2, v = (x + y) / R2;
+      if (ORG) { ORG.n++; ORG.x += x; ORG.y += y; ORG.z += z; } const u = (x - y + ORG_U) / R2, v = (x + y + ORG_V) / R2;
       const ix = (T.OX + u * T.S) | 0, iy = (T.OY + (v * SIN - z * COS) * T.S) | 0;
       if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
       const i = iy * W + ix, d = v * COS + z * SIN;
@@ -212,7 +213,7 @@ function cone(cx, cy, z0, z1, r0, shade, r1 = 0) {
     const base = levelOf(nx * h, ny * h, r0 - r1);
     for (let b = 0; b <= nz; b++) {
       const t = b / nz, r = lerp(r0, r1, t), z = z0 + h * t, x = cx + nx * r, y = cy + ny * r;
-      const u = (x - y) / R2, v = (x + y) / R2;
+      if (ORG) { ORG.n++; ORG.x += x; ORG.y += y; ORG.z += z; } const u = (x - y + ORG_U) / R2, v = (x + y + ORG_V) / R2;
       const ix = (T.OX + u * T.S) | 0, iy = (T.OY + (v * SIN - z * COS) * T.S) | 0;
       if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
       const i = iy * W + ix, d = v * COS + z * SIN;

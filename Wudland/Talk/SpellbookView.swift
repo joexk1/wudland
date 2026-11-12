@@ -67,8 +67,7 @@ struct SpellbookView: View {
             .padding(.horizontal, 40)   // room for the close button, mirrored so the title stays centred
             .frame(maxWidth: .infinity)
             .overlay(alignment: .trailing) {
-                Button(action: onClose) { PixelIcon(rows: PixelIcon.close, color: Ink.ink, scale: 2.4).padding(10) }
-                    .accessibilityLabel("Close the book")
+                CloseButton(label: "Close the book", action: onClose)
             }
             status
         }
@@ -180,7 +179,6 @@ struct SpellbookView: View {
         .foregroundStyle(Ink.parchment)
         .environment(\.colorScheme, .dark)
         .disabled(book.busy)
-        .opacity(book.busy ? 0.55 : 1)
         .accessibilityHint(hint)
     }
     private var inkwell: some View {
@@ -198,7 +196,7 @@ struct SpellbookView: View {
                 .padding(.horizontal, 12).padding(.vertical, 10)
                 .background { PixelFrame(step: 2).fill(Ink.parchmentDeep); PixelFrame(step: 2).stroke(Ink.inkSoft, lineWidth: 2) }
             Button {
-                let t = draft; draft = ""; book.cast(t)
+                let t = draft; draft = ""; Haptics.play("light"); book.cast(t)
             } label: {
                 HStack(spacing: 5) { PixelIcon(rows: PixelIcon.star, color: Ink.gold, scale: 2); Text("Cast").font(Fonts.pixel(15, .bold)) }
                     .foregroundStyle(Ink.parchment)
@@ -218,7 +216,7 @@ struct SpellStatus: View {
     private let timer = Timer.publish(every: 0.18, on: .main, in: .common).autoconnect()
     var body: some View {
         HStack(spacing: 6) {
-            Text(runes[i % runes.count] + runes[(i + 3) % runes.count]).font(.system(size: 13, weight: .bold)).foregroundStyle(Ink.arcane)
+            Text(runes[i % runes.count] + runes[(i + 3) % runes.count]).font(Fonts.pixel(13, .bold)).foregroundStyle(Ink.arcane)
             Text(text + String(repeating: ".", count: i / 2 % 4)).font(Fonts.pixel(12, .medium)).foregroundStyle(Ink.leather)
         }
         .onReceive(timer) { _ in i += 1 }
@@ -253,7 +251,7 @@ struct MarginNote: View {
                 }
                 .padding(.vertical, 4).contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(SquishStyle(scale: 0.96))
             .accessibilityLabel(open ? "Hide what Thistlewick did" : "Show what Thistlewick did: \(summary)")
 
             if open {

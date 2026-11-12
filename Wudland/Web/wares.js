@@ -124,7 +124,7 @@ function take(id, n = 1) { if ((ECON.inv[id] || 0) < n) return false; ECON.inv[i
 
 function buy(npc, id) {
   const s = (stockFor(npc) || []).find(p => p.id === id);
-  if (!s || s.qty < 1) return econChanged({ error: 'Sold out, m\'lord.' });
+  if (!s || s.qty < 1) return econChanged({ error: `Sold out, ${mlord()}.` });
   if (ECON.crowns < s.price) return econChanged({ error: 'Not enough crowns.' });
   ECON.crowns -= s.price;
   const w = stockWindow();
@@ -718,7 +718,8 @@ function furnitureArmor(x, y) {
 /* ---------- furniture at the cottage ---------- */
 // each piece has its own place; build happens inside buildHome's sc.with()
 function placeFurniture(sc) {
-  const has = id => ECON.placed.includes(id) && ECON.inv[id] > 0;
+  const has = id => { const on = ECON.placed.includes(id) && ECON.inv[id] > 0; furnBegin(id, on); return on; };
+  shiftPush(sc.obst); shiftPush(sc.fires);
   const C = c => () => c;
   if (has('f_plant')) {
     cylinder(3.5, -.3, 0, .4, .2, solid([170, 100, 60]), -Math.PI, Math.PI);
@@ -755,6 +756,8 @@ function placeFurniture(sc) {
     capsule([-.2, -2.92, 1.8], [-.05, -2.92, 2.3], .03, .03, C([90, 60, 40]), 'solid');
   }
   placeMoreFurniture(sc, has);
+  furnEnd();
+  delete sc.obst.push; delete sc.fires.push;
 }
 
 /* ---------- the bard ---------- */
@@ -766,8 +769,8 @@ function drawLute(a, parts) {
 }
 
 /* ---------- per-frame hooks (called from game.js) ---------- */
-function stepWares(dt) { stepFinds(dt); stepCreatures(dt); stepDog(dt); stepEffects(dt); stepMore(dt); }
-function drawWares() { drawFinds(); drawCreatures(); drawDog(); if (G.scene.id !== 'village') drawRoomExtras(); }
+function stepWares(dt) { stepFinds(dt); stepCreatures(dt); stepDog(dt); stepEffects(dt); stepMore(dt); stepFrontier(dt); }
+function drawWares() { drawFinds(); drawCreatures(); drawDog(); drawFrontier(); if (G.scene.id !== 'village') drawRoomExtras(); }
 function tapWares(sx, sy) { return tapDog(sx, sy) || (G.scene.id === 'village' && tapCreature(sx, sy)); }
 
 const WARES_API = {

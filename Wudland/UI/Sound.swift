@@ -16,9 +16,17 @@ final class Sound {
     private var currentLoop = ""
     private let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
     private var started = false
-    var enabled: Bool { !UserDefaults.standard.bool(forKey: "soundOff") }
+    var enabled: Bool { !Self.silent && !UserDefaults.standard.bool(forKey: "soundOff") }
+    /// UI test runs can launch with -WudlandSilent to leave audio alone entirely (a simulator whose audio
+    /// service has wedged aborts inside AVAudioEngine otherwise). Debug builds only.
+    #if DEBUG
+    static let silent = ProcessInfo.processInfo.arguments.contains("-WudlandSilent")
+    #else
+    static let silent = false
+    #endif
 
     private init() {
+        if Self.silent { return }
         try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
         engine.attach(mixer)
         engine.connect(mixer, to: engine.mainMixerNode, format: format)
@@ -37,11 +45,11 @@ final class Sound {
     }
 
     func start() {
-        guard !started else { return }
+        guard !started, !Self.silent else { return }
         do { try AVAudioSession.sharedInstance().setActive(true); try engine.start(); started = true } catch { started = false }
     }
     private func restart() { started = false; start(); if !currentLoop.isEmpty { let l = currentLoop; currentLoop = ""; ambient(l) } }
-    func pause() { ambience.stop(); currentLoop = ""; engine.pause(); started = false }
+    func pause() { guard !Self.silent else { return }; ambience.stop(); currentLoop = ""; engine.pause(); started = false }
 
     func play(_ name: String, volume: Float = 1, rate: Float = 1) {
         guard enabled, let buf = buffers[name] else { return }

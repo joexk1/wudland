@@ -5,10 +5,28 @@
 const at = (u, v) => [(u + v) / R2, (v - u) / R2];
 const toUV = (x, y) => [(x - y) / R2, (x + y) / R2];
 const ISLE = { ru: 17, rv: 31 };
+const EXT = { ru: 39, rv: 61, south: 56 };       // the whole island, new lands included
+const LOBES = [
+  { id: 'docks', u: 25, v: 3, ru: 11, rv: 12 }, { id: 'peaks', u: 0, v: -45, ru: 21, rv: 16 },
+  { id: 'woods', u: -27, v: -13, ru: 12, rv: 16 }, { id: 'wastes', u: -6, v: 43, ru: 18, rv: 13 },
+];
+const lobeF = (u, v, l) => Math.pow(Math.pow(Math.abs(u - l.u) / l.ru, 2.4) + Math.pow(Math.abs(v - l.v) / l.rv, 2.4), 1 / 2.4);
+function mainF(u, v) { return Math.pow(Math.pow(Math.abs(u) / ISLE.ru, 2.4) + Math.pow(Math.abs(v) / ISLE.rv, 2.4), 1 / 2.4); }
 function isleF(u, v) {
-  const w = (noise(u * .22 + 3, v * .22) - .5) * .12;
-  return Math.pow(Math.pow(Math.abs(u) / ISLE.ru, 2.4) + Math.pow(Math.abs(v) / ISLE.rv, 2.4), 1 / 2.4) + w;
+  // one whole island: a broad, soft-shouldered oval with a wandering coast
+  const w = (noise(u * .22 + 3, v * .22) - .5) * .1 + (noise(u * .07 + 9, v * .07 + 4) - .5) * .12;
+  return Math.pow(Math.pow(Math.abs(u) / 38, 2.3) + Math.pow(Math.abs(v + 2) / 58, 2.3), 1 / 2.3) + w;
 }
+function regionOf(u, v) {
+  if (mainF(u, v) < 1) return 'village';
+  let best = 'village', bf = 1e9;
+  for (const l of LOBES) { const f = lobeF(u, v, l); if (f < bf) { bf = f; best = l.id; } }
+  return best;
+}
+const HARBOUR = { x: (27.5 + 5) / R2, y: (5 - 27.5) / R2, r: 7 };
+const PIER = { x0: HARBOUR.x - 8.6, x1: HARBOUR.x + 1.4 };
+const inHarbour = (x, y, m = 0) => Math.hypot(x - HARBOUR.x, y - HARBOUR.y) < HARBOUR.r + (noise(x * .6, y * .6) - .5) * 1.2 + m;
+const onPier = (x, y) => x > PIER.x0 - .3 && x < PIER.x1 && Math.abs(y - HARBOUR.y) < .62;
 const RIVER_Y = x => 15.6 + Math.sin(x * .32) * .7 + Math.sin(x * .11 + 1) * .5, RIVER_W = 1.25;
 const BRIDGE = { x: 8, y: RIVER_Y(8) };
 
@@ -32,15 +50,15 @@ const GRASS_BY = {
 /* ---------- the village ---------- */
 const BUILDINGS = [
   { id: 'post', name: 'The Raven Post', u: -8.6, v: -9.2, w: 4.2, d: 3.4, h: 3.1, walls: 'timber', wall: PAL.plaster, roof: 'tile', door: { face: 'x', at: .5 },
-    windows: [{ face: 'y', at: .3, shutter: PAL.blue, flowers: [[226, 90, 80], [240, 200, 90]] }, { face: 'y', at: .72, shutter: PAL.blue }, { face: 'x', at: .18 }, { face: 'x', at: .82 }], chimney: { at: .25, side: -1 }, pick: 1 },
+    windows: [{ face: 'y', at: .3, shutter: PAL.blue, flowers: [[226, 90, 80], [240, 200, 90]] }, { face: 'y', at: .72, shutter: PAL.blue }, { face: 'x', at: .18, flowers: [[240, 200, 90], [226, 90, 80]] }, { face: 'x', at: .82 }], chimney: { at: .25, side: -1 }, pick: 1 },
   { id: 'guild', name: "Artificers' Guild", u: 8.6, v: -9.4, w: 4.4, d: 5.2, h: 3.4, walls: 'stone', roof: 'slate', door: { face: 'y', at: .5, w: .95, h: 1.5 }, ridge: 'y',
     windows: [{ face: 'y', at: .18, arch: true }, { face: 'y', at: .82, arch: true }, { face: 'x', at: .25, arch: true }, { face: 'x', at: .55, arch: true }, { face: 'x', at: .85, arch: true }], chimney: { at: .3, side: 1, key: 'guild' }, pick: 2 },
   { id: 'tavern', name: 'The Gossiping Goose', u: 9, v: 8.6, w: 5.2, d: 3.8, h: 3.3, walls: 'timber', wall: PAL.plasterWarm, roof: 'thatch', door: { face: 'y', at: .38, w: .9 },
-    windows: [{ face: 'y', at: .14, flowers: [[230, 110, 90], [250, 220, 120]] }, { face: 'y', at: .64 }, { face: 'y', at: .86 }, { face: 'x', at: .3, shutter: PAL.red }, { face: 'x', at: .72, shutter: PAL.red }], chimney: { at: .8, side: 1 }, pick: 3 },
+    windows: [{ face: 'y', at: .14, flowers: [[230, 110, 90], [250, 220, 120]] }, { face: 'y', at: .64 }, { face: 'y', at: .86 }, { face: 'x', at: .3, shutter: PAL.red, flowers: [[250, 220, 120], [230, 110, 90]] }, { face: 'x', at: .72, shutter: PAL.red }], chimney: { at: .8, side: 1 }, pick: 3 },
   { id: 'home', name: 'The Cottage', u: -9.2, v: 7.2, w: 3.6, d: 3, h: 2.8, walls: 'timber', wall: PAL.plasterRose, roof: 'thatch', door: { face: 'x', at: .45 }, brace: false,
-    windows: [{ face: 'y', at: .5, shutter: PAL.sage, flowers: [[236, 140, 170], [250, 240, 230], [200, 120, 220]] }, { face: 'x', at: .85, shutter: PAL.sage }], chimney: { at: .7, side: 1 }, pick: 4 },
+    windows: [{ face: 'y', at: .5, shutter: PAL.sage, flowers: [[236, 140, 170], [250, 240, 230], [200, 120, 220]] }, { face: 'x', at: .85, shutter: PAL.sage, flowers: [[250, 240, 230], [236, 140, 170]] }], chimney: { at: .7, side: 1 }, pick: 4 },
   { id: 'shop', name: "Odette's Curiosities", u: 2.2, v: 15.2, w: 3.8, d: 3.2, h: 3, walls: 'timber', wall: [214, 196, 168], roof: 'tile', door: { face: 'y', at: .5 },
-    windows: [{ face: 'y', at: .18, shutter: [110, 60, 100], flowers: [[236, 196, 90], [190, 120, 230]] }, { face: 'y', at: .82, shutter: [110, 60, 100] }, { face: 'x', at: .5, shutter: [110, 60, 100] }], chimney: { at: .3, side: -1 }, pick: 7 },
+    windows: [{ face: 'y', at: .18, shutter: [110, 60, 100], flowers: [[236, 196, 90], [190, 120, 230]] }, { face: 'y', at: .82, shutter: [110, 60, 100], flowers: [[190, 120, 230], [236, 196, 90]] }, { face: 'x', at: .5, shutter: [110, 60, 100] }], chimney: { at: .3, side: -1 }, pick: 7 },
 ];
 const TOWER = { id: 'tower', name: "The Wizard's Tower", u: -8.8, v: -23, r: 1.5, h: 6.4, pick: 5 };
 const CHAPEL = { id: 'bell', name: 'The Bell Tower', u: 8.4, v: -23.5, pick: 6 };
@@ -62,6 +80,10 @@ const PATHS = [
   [[2.2, -5], [5.8, -14], [7.4, -20.4]],             // north road to the bell tower
   [[-5.6, -14], [0, -15.2], [5.8, -14]],
   [[4.4, -2.6], [10.6, -3.6], [12.4, -2.4]],         // to the forge yard
+  [[12.4, -2.4], [16, -.6], [21.2, -1]],             // on to the harbour
+  [[-5.6, -14], [-12, -13.4], [-18, -13], [-24, -12], [-30, -14]],   // into the Whisperwood
+  [[0, -15.2], [0, -24], [.6, -32], [1.4, -37], [3.2, -40.5], [1.6, -42.4]],   // up to the peaks
+  [[-5.4, 23.2], [-5, 30], [-6, 36], [-8.6, 44]],    // out into the Wastes
 ];
 const FIELD = { u: -2.4, v: 25.6, w: 4, d: 2.6 };   // in (x, y) footprint around at(u, v)
 const MILL = { u: -7.4, v: 21.6 };
@@ -80,8 +102,9 @@ function pathDist(u, v) {
 function buildVillage(data) {
   const season = seasonOf();
   SNOW = season === 'winter';
-  const S = 14, W = 2 * ISLE.ru * S + 60, H = 600;
-  const scene = new Scene('village', { S, W, H, OX: W / 2, OY: 330, backdrop: 'sky', title: 'Wudland' });
+  OUTDOORS = true;
+  const S = 14, W = 2 * EXT.ru * S + 60, OY = EXT.rv * S * SIN + 215, H = Math.ceil(OY + EXT.south * S * SIN + 70);
+  const scene = new Scene('village', { S, W, H, OX: W / 2, OY, backdrop: 'sky', title: 'Wudland' });
   const grass = GRASS_BY[season];
   const fieldC = at(FIELD.u, FIELD.v), plazaC = at(PLAZA.u, PLAZA.v);
   const cobble = [[206, 190, 160], [190, 176, 150], [214, 200, 172], [180, 166, 146]];
@@ -91,6 +114,12 @@ function buildVillage(data) {
     const [u, v] = toUV(x, y), f = isleF(u, v);
     if (f > 1) return 0;
     const fine = hash(ix, iy);
+    if (inHarbour(x, y)) {
+      T.kinds[i] = K_WATER;
+      const n = noise(x * .8, y * 2.2) * .5 + (1 - Math.hypot(x - HARBOUR.x, y - HARBOUR.y) / HARBOUR.r) * .9, c = SNOW ? [[150, 176, 200], [170, 196, 218], [190, 212, 230]] : [[34, 76, 108], [46, 92, 118], [56, 112, 136], [74, 134, 150]];
+      return rgb(...c[clamp(Math.floor((1 - n * .7) * c.length + (bayerAt(ix, iy) - .5) * .7), 0, c.length - 1)]);
+    }
+    if (inHarbour(x, y, .45)) { T.kinds[i] = K_PATH; return rampOf(SNOW ? [210, 214, 220] : [206, 186, 140])[clamp(Math.floor(2 + fine * 2), 1, 4)]; }
     const ry = RIVER_Y(x), rd = Math.abs(y - ry);
     if (rd < RIVER_W) {
       T.kinds[i] = K_WATER;
@@ -115,16 +144,20 @@ function buildVillage(data) {
     if (pth < .95 + wob) {
       T.kinds[i] = K_PATH;
       if (SNOW) return rgb(...[[210, 212, 218], [196, 196, 204]][fine > .7 ? 1 : 0]);
-      if (fine > .93) return rgb(...cobble[hash(ix, iy * 3) * 4 | 0]);
+      // a scatter of pebbles gathered in patches, not salt sprinkled over the whole road
+      if (fine > .955 && noise(x * 1.1 + 7, y * 1.1) > .56) return rgb(...cobble[hash(ix, iy * 3) * 4 | 0]);
       return rgb(...dirt[clamp(Math.floor(noise(x * 2, y * 2) * 3 + (bayerAt(ix, iy) - .5) * .8), 0, 2)]);
     }
+    // the verge: trodden earth breaking up into the grass
+    if (!SNOW && pth < 1.22 + wob && bayerAt(ix, iy) > (pth - .95 - wob) / .27 * .85 + .12) { T.kinds[i] = K_PATH; return rgb(...(fine > .5 ? [148, 124, 86] : [136, 118, 80])); }
     if (Math.abs(x - fieldC[0]) < FIELD.w / 2 && Math.abs(y - fieldC[1]) < FIELD.d / 2) {
       T.kinds[i] = K_FIELD;
       const row = (y - fieldC[1] + 10) % .5;
       return rgb(...(SNOW ? (row < .18 ? [200, 196, 196] : [236, 238, 244]) : row < .2 ? [104, 74, 52] : [132, 96, 64]));
     }
-    if (f > .955) { T.kinds[i] = K_PATH; return rampOf([120, 96, 70])[clamp(Math.floor(2 + fine * 1.5), 1, 3)]; }
+    if (f > .955 && v > -18) { T.kinds[i] = K_PATH; return rampOf([120, 96, 70])[clamp(Math.floor(2 + fine * 1.5), 1, 3)]; }
     T.kinds[i] = K_GRASS;
+    { const rc = regionGround(regionOf(u + (noise(u * .4, v * .4) - .5) * 7, v + (noise(v * .4, u * .4 + 5) - .5) * 7), x, y, ix, iy, fine); if (rc) return rc; }
     const t = noise(x * .7, y * .7) * 1.1 + (fine - .5) * .5 - .05;
     if (season === 'autumn' && fine > .985) return rgb(...[[214, 120, 50], [226, 170, 70], [180, 70, 50]][hash(iy, ix) * 3 | 0]);
     return rgb(...grass[clamp(Math.floor(t * 4.2), 0, 3)]);
@@ -174,7 +207,8 @@ function buildVillage(data) {
     if (season === 'autumn') for (const [dx, dy] of [[-1.6, 2], [-.6, 2.05], [.6, 2.1]]) pumpkin(hx + dx, hy + dy, .9);
     // the mill and the fields across the river
     const [mx, my] = at(MILL.u, MILL.v);
-    windmillBase(scene, mx, my); sky.push({ cx: mx, cy: my, r: 1.5 });
+    PICK = 80; windmillBase(scene, mx, my); PICK = 0; sky.push({ cx: mx, cy: my, r: 1.5 });
+    scene.doors.push({ id: 'mill', x: mx + 1.5, y: my + 1.5, face: 'r', pick: 80 });
     scene.props.mill = { x: mx, y: my };
     for (const [dx, dy] of [[2.2, -.6], [2.6, .4]]) { hayBale(mx + dx, my + dy); sky.push({ cx: mx + dx, cy: my + dy, r: .7 }); }
     for (let k = 0; k < 8; k++) for (let r = 0; r < 5; r++) {
@@ -192,8 +226,8 @@ function buildVillage(data) {
     const pal = LEAVES[season];
     const clear = (x, y, r) => {
       const [u, v] = toUV(x, y), f = isleF(u, v);
-      if (f > .9 || pathDist(u, v) < 1.6 + r * .4 || Math.hypot(u - PLAZA.u, v - PLAZA.v) < PLAZA.r + 1.5) return false;
-      if (Math.abs(y - RIVER_Y(x)) < RIVER_W + 1 + r * .3) return false;
+      if (f > .9 || highAt(x, y) > .08 || pathDist(u, v) < 1.6 + r * .4 || Math.hypot(u - PLAZA.u, v - PLAZA.v) < PLAZA.r + 1.5) return false;
+      if (Math.abs(y - RIVER_Y(x)) < RIVER_W + 1 + r * .3 || inHarbour(x, y, 1 + r * .5)) return false;
       if (Math.abs(x - fieldC[0]) < FIELD.w / 2 + 1.2 && Math.abs(y - fieldC[1]) < FIELD.d / 2 + 1.5) return false;
       for (const o of sky) {
         if (o.r ? Math.hypot(x - o.cx, y - o.cy) < o.r + r + .6 : x > o.x0 - r - 1.4 && x < o.x1 + r + .8 && y > o.y0 - r - 1.4 && y < o.y1 + r + .8) return false;
@@ -202,8 +236,8 @@ function buildVillage(data) {
       return true;
     };
     for (let n = 0; n < 2600 && trees.length < 64; n++) {
-      const u = (hash(n, 1) * 2 - 1) * ISLE.ru, v = (hash(n, 2) * 2 - 1) * ISLE.rv, f = isleF(u, v);
-      if (f > .9 || (f < .62 && hash(n, 5) > .12)) continue;
+      const u = (hash(n, 1) * 2 - 1) * ISLE.ru, v = (hash(n, 2) * 2 - 1) * ISLE.rv, f = mainF(u, v);
+      if (f > 1 || (f < .62 && hash(n, 5) > .12)) continue;
       const [x, y] = at(u, v), pine = v < -12 ? hash(n, 3) > .35 : hash(n, 3) > .82, s = .62 + hash(n, 4) * .32;
       const r = pine ? 1.1 * s : 1.7 * s;
       if (!clear(x, y, r)) continue;
@@ -223,41 +257,53 @@ function buildVillage(data) {
       else { sphere(x, y, .05, .26, [140, 138, 132], 'rough'); castShadow(x, y, .1, .26); }
       sky.push({ cx: x, cy: y, r: .4 });
     }
+    buildFrontier(scene, sky, clear, pal, trees);
   });
   finishBake(scene);
+  OUTDOORS = false;
   scene.nav = makeNav(scene, (x, y) => {
     const [u, v] = toUV(x, y);
     if (isleF(u, v) > .9) return false;
     const onBridge = Math.abs(x - BRIDGE.x) < .7 && Math.abs(y - BRIDGE.y) < 2.4;
     if (!onBridge && Math.abs(y - RIVER_Y(x)) < RIVER_W + .3) return false;
+    if ((inHarbour(x, y, .1) && !onPier(x, y)) || highAt(x, y) > .2) return false;
     for (const o of sky) if (o.r ? Math.hypot(x - o.cx, y - o.cy) < o.r + .25 : x > o.x0 - .25 && x < o.x1 + .25 && y > o.y0 - .25 && y < o.y1 + .25) return false;
     return true;
   }, (x, y) => { const [u, v] = toUV(x, y); return pathDist(u, v) < 1 || Math.hypot(u - PLAZA.u, v - PLAZA.v) < PLAZA.r ? .6 : 1; });
   for (const d of scene.doors) d.name = NAMES[d.id];
   // camera bounds: the island's projected extent
-  scene.bounds = { x0: 10, y0: 40, x1: W - 10, y1: H - 6 };
+  scene.bounds = { x0: 10, y0: 10, x1: W - 10, y1: H - 6 };
   scene.sunAt = 0;
   return scene;
 }
 
-// the floating island's earth: hang a cliff of soil and rock under the front edge
+// the floating island's earth: hang a cliff of soil and rock under the front edge, in wandering strata with
+// lumps of stone, a turf lip that matches the ground above, a few trailing vines and a crumbling underside
 function islandSkirt(scene) {
   const t = scene.t, W = t.W, H = t.H;
-  const soil = [[118, 86, 62], [98, 72, 56], [84, 64, 54], [104, 96, 92], [86, 80, 80]];
+  const soil = [[124, 90, 64], [102, 76, 58], [88, 68, 58], [108, 100, 96], [84, 78, 80]], stone = [132, 126, 122], vine = [78, 110, 58];
   for (let ix = 0; ix < W; ix++) {
-    let low = -1;
-    for (let iy = H - 1; iy >= 0; iy--) if (t.ground[iy * W + ix]) { low = iy; break; }
-    if (low < 0) continue;
-    const z = t.zb[low * W + ix];
-    const depth = 10 + Math.round(noise(ix * .09, 3) * 14 + hash(ix, 7) * 2);
-    for (let k = 1; k <= depth && low + k < H; k++) {
-      const i = (low + k) * W + ix, band = k / depth;
-      let c = band < .18 ? soil[0] : band < .55 ? soil[1] : band < .8 ? soil[3] : soil[4];
-      if (k <= 2) c = [96, 112, 62]; // grass lip
-      const l = 2 + (noise(ix * .3, k * .4) - .5) * 1.6 - band * .8 + (bayerAt(ix, low + k) - .5) * .6;
-      t.pix[i] = rampOf(c)[clamp(Math.floor(l), 0, 4)];
-      t.zb[i] = z - .001 * k;
-      t.groundZ[i] = FAR + 1; // not ground, never shadowed
+    // every front edge gets a cliff: the new lands overlap each other on screen
+    for (let low = H - 2; low >= 0; low--) {
+      if (!t.ground[low * W + ix] || t.ground[(low + 1) * W + ix]) continue;
+      const z = t.zb[low * W + ix], top = t.pix[low * W + ix];
+      const depth = 14 + Math.round(noise(ix * .05, 3) * 18 + noise(ix * .19, 9) * 8 + hash(ix, 7) * 2);
+      const hang = hash(ix >> 1, 91) > .9 ? 4 + (hash(ix >> 1, 92) * 9 | 0) : 0;
+      for (let k = 1; k <= depth && low + k < H; k++) {
+        const i = (low + k) * W + ix, band = k / depth;
+        if (t.ground[i]) break;
+        // the underside crumbles away in a dither rather than ending in a hard line
+        if (band > .72 && hash(ix >> 1, (low + k) >> 1) < (band - .72) * 2.6) continue;
+        t.zb[i] = z - .001 * k;
+        t.groundZ[i] = FAR + 1; // not ground, never shadowed
+        if (k <= 2) { t.pix[i] = rgb((top & 255) * (k === 1 ? .86 : .68), (top >> 8 & 255) * (k === 1 ? .86 : .66), (top >> 16 & 255) * (k === 1 ? .84 : .74)); continue; }
+        if (hang && k <= hang) { t.pix[i] = rampOf(vine)[k === hang ? 4 : 2 + (k & 1)]; continue; }
+        const lay = Math.floor((k + noise(ix * .07, 5) * 9) / 6.5);
+        let c = soil[Math.min(4, lay)];
+        if (noise(ix * .22, k * .38 + 40) > .66) c = stone;
+        const l = 2.9 - band * 2 + (noise(ix * .3, k * .4) - .5) * 1.3 + (bayerAt(ix, low + k) - .5) * .6;
+        t.pix[i] = rampOf(c)[clamp(Math.floor(l), 0, 4)];
+      }
     }
   }
 }

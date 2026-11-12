@@ -17,6 +17,9 @@ final class Game: NSObject, WKScriptMessageHandler {
     var ready = false
     var sceneID = "village"
     var sceneTitle = "Wudland"
+    /// a parchment card (errands, the map, a villager's game) or the arrange bar is up inside the canvas:
+    /// the HUD stands down so its buttons never sit on top of it
+    var webCardOpen = false
     let economy = Economy()
     @ObservationIgnored var onEvent: ((GameEvent) -> Void)?
     @ObservationIgnored private(set) var webView: WKWebView!
@@ -111,6 +114,8 @@ final class Game: NSObject, WKScriptMessageHandler {
         case "save": economy.save(body)
         case "haptic":
             Haptics.play(body["style"] as? String ?? "light")
+        case "card":
+            webCardOpen = body["open"] as? Bool ?? false
         default: break
         }
     }
@@ -129,6 +134,7 @@ final class Game: NSObject, WKScriptMessageHandler {
     func setSpeaking(_ on: Bool) { js("wud.setSpeaking(\(on))") }
     func setWizard(_ busy: Bool) { js("wud.setWizard(\(busy))") }
     func setPaused(_ p: Bool) { js("wud.setPaused(\(p))") }
+    func setReduceMotion(_ on: Bool) { js("wud.setReduceMotion(\(on))") }
     func setHour(_ h: Double?) { js("wud.setHour(\(h.map { String($0) } ?? "null"))") }
     func goTo(_ id: String) { js("wud.goTo('\(id)')") }
     func zoom(_ step: Int) { js("wud.zoom(\(step))") }
@@ -145,6 +151,18 @@ final class Game: NSObject, WKScriptMessageHandler {
     func placeItem(_ id: String, on: Bool) { js("wud.place(\(q(id)), \(on))") }
     func nameDog(_ n: String) { js("wud.name(\(q(n)))") }
     func wear(_ slot: String, _ id: String?) { js("wud.wear(\(q(slot)), \(id.map { q($0) } ?? "null"))") }
+    func arrange() { js("wud.arrange(true)") }
+    func sleep() { js("wud.sleep()") }
+    func quests() { js("wud.quests()") }
+    /// the first-run guide pokes the village directly (open the map, show the zoom rail)
+    func run(_ src: String) { js(src) }
+    /// where an element of the village overlay sits on screen, in points (the web view fills the screen)
+    func rect(of selector: String) async -> CGRect? {
+        guard let wv = webView else { return nil }
+        let src = "(() => { const e = document.querySelector(\(q(selector))); if (!e) return null; const r = e.getBoundingClientRect(); return r.width ? [r.left, r.top, r.width, r.height] : null; })()"
+        guard let a = try? await wv.evaluateJavaScript(src) as? [Double], a.count == 4 else { return nil }
+        return CGRect(x: a[0], y: a[1], width: a[2], height: a[3])
+    }
     func setCompanion(_ id: String) { js("wud.companion(\(q(id)))") }
 }
 

@@ -20,16 +20,28 @@ function timberWall(len, h, plaster, seed = 0, brace = true) {
     const panel = Math.floor(s / sp);
     let br = false;
     if (brace && t < mid && (panel + seed) % 2 === 0) br = Math.abs((m / sp) - (t / mid)) < .09;
+    // ivy has had years to climb one corner of the older walls
+    if (OUTDOORS && seed % 2 === 1 && !SNOW) {
+      const reach = noise(s * 4.5 + seed * 7, t * 4.5) - s * .5 - t * .13;
+      if (reach > .26) { const v = hash(s * 11 | 0, t * 11 | 0); o.c = v > .8 ? IVY[2] : v > .35 ? IVY[1] : IVY[0]; o.dl = (v - .5) * 1.2; return; }
+    }
     if (post || beam || br) { o.c = PAL.timber; o.dl = (hash(s * 8 | 0, t * 3 | 0) - .5) * .5; o.flat = true; return; }
     o.c = plaster; o.dl = (noise(s * 4 + seed, t * 4) - .5) * .5 + .15;
+    // weathered plaster: a darker tide near the ground and under the eaves
+    if (t < .35) o.dl -= (.35 - t) * 1.6; else if (t > h - .5) o.dl -= .25;
   };
 }
+const IVY = [[58, 92, 56], [86, 124, 66], [128, 150, 78]], MOSS = [[104, 128, 84], [124, 142, 92]];
+let OUTDOORS = false;   // moss and ivy only grow on walls out in the weather: set while the village bakes
 function stoneWall(stone = PAL.stone, seed = 0, rowH = .3, blockW = .55) {
   return (s, t, o) => {
     const r = Math.floor(t / rowH), off = (r % 2) * blockW * .5, ss = s + off;
     const col = Math.floor(ss / blockW);
-    if (t % rowH < .045 || ss % blockW < .045) { o.c = PAL.mortar; o.dl = -.2; return; }
+    // moss creeps up from the damp ground and settles into the joints
+    const damp = OUTDOORS ? noise(s * 2.3 + seed, t * 2.6) + (.7 - Math.min(t, .7)) * .55 : 0;
+    if (t % rowH < .045 || ss % blockW < .045) { o.c = damp > .74 ? MOSS[0] : PAL.mortar; o.dl = -.2; return; }
     const v = hash(col + seed, r * 3.1);
+    if (damp > .8 && !SNOW) { o.c = MOSS[v > .5 ? 1 : 0]; o.dl = (v - .5) * .8 + (hash(s * 12 | 0, t * 12 | 0) - .5) * .5; return; }
     o.c = v > .86 ? [134, 140, 112] : stone; // a few mossy blocks
     o.dl = (v - .5) * .9 + (noise(s * 6, t * 6) - .5) * .3;
   };
@@ -45,8 +57,9 @@ function plankShade(c, along = 's', w = .22, seed = 0) {
 }
 function roofShade(kind, color, len) {
   if (kind === 'thatch') return (s, t, o) => {
-    o.c = color;
-    o.dl = (noise(s * 14, t * 1.4) - .5) * 1.3 + (t < .14 ? -.6 : 0) + (t > len - .1 ? -.5 : 0);
+    const course = (t + noise(s * 1.6, 3) * .12) % .62;
+    o.c = OUTDOORS && !SNOW && noise(s * 1.7 + 20, t * 1.9) > .74 ? [150, 150, 84] : color;   // a little moss in the straw
+    o.dl = (noise(s * 14, t * 1.4) - .5) * 1.3 + (t < .14 ? -.6 : 0) + (t > len - .1 ? -.5 : 0) + (course < .07 ? -.9 : course < .16 ? .35 : 0);
   };
   if (kind === 'slate') return (s, t, o) => {
     const r = Math.floor(t / .2), col = Math.floor((s + (r % 2) * .14) / .28);
@@ -162,7 +175,8 @@ function windowShade(ww, hh, arch) {
     if (s < fr || s > ww - fr || t < fr || t > hh - fr) { o.c = PAL.woodDark; o.flat = true; return; }
     if (Math.abs(s - ww / 2) < .035 || Math.abs(t - hh * .55) < .035) { o.c = PAL.woodDark; o.flat = true; return; }
     o.c = PAL.glass; o.kind = K_WINDOW;
-    o.dl = ((s + t) % .5 < .1 ? .9 : 0) - .2; // a glint across the pane
+    // a glint across the pane, and a brighter heart low in the middle where the candle stands
+    o.dl = ((s + t) % .5 < .1 ? .9 : 0) - .2 + (Math.hypot(s - ww / 2, (t - hh * .3) * .8) < ww * .3 ? .9 : 0);
     o.flat = true;
   };
 }

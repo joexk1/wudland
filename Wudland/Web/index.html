@@ -6,17 +6,133 @@
 <title>Wudland</title>
 <style>
   @font-face { font-family: 'Pixelify'; src: url(fonts/PixelifySans.ttf); font-weight: 400 700; }
+  @font-face { font-family: 'Jacquard'; src: url(fonts/Jacquard12.ttf); }
+  /* the same parchment, ink and gold as Ink in Theme.swift */
+  :root {
+    --ink: #3a2622; --ink-soft: #6b4f42; --faded: #947861; --parchment: #faf2de; --parchment-deep: #edddbd; --parchment-shade: #dbc79e;
+    --gold: #edbf57; --gold-deep: #b07a33; --red: #c44033; --leaf: #66875c; --night: #1a1418; --slate: #2a2f3c;
+    --pop: cubic-bezier(.2, .9, .3, 1.25); --out: cubic-bezier(.2, .7, .2, 1);
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1214; overscroll-behavior: none; }
   #c { position: fixed; left: 0; top: 0; image-rendering: pixelated; touch-action: none; will-change: transform; }
-  #ov { position: fixed; inset: 0; pointer-events: none; }
+  #ov { position: fixed; inset: 0; pointer-events: none; z-index: 4; }   /* name tags ride above the little map */
+  canvas { image-rendering: pixelated; }
+  button { font: inherit; color: inherit; -webkit-appearance: none; appearance: none; border-radius: 0; }
+
+  /* stepped pixel frames, drawn once as tiny SVGs (see the script below) so they match PixelFrame in the app */
+  .card, .bar { border-style: solid; border-color: transparent; border-width: 9px 9px 12px; border-image: var(--f-card) 3 3 4 fill / 9px 9px 12px; }
+  .pb, .tile, .tag, .pin span { border-style: solid; border-color: transparent; border-width: 6px 6px 8px; border-image: var(--f-btn) 3 3 4 fill / 6px 6px 8px; }
+
   .tag {
-    position: absolute; left: 0; top: 0; opacity: 0; transition: opacity .25s;
-    font: 600 13px/1 'Pixelify', ui-monospace, monospace; color: #3a2622; letter-spacing: .02em; white-space: nowrap;
-    background: #faf2de; padding: 5px 8px 6px; border: 2px solid #3a2622;
-    box-shadow: 0 2px 0 #3a262244; image-rendering: pixelated;
+    position: absolute; left: 0; top: 0; opacity: 0; scale: .8; transition: opacity .18s, scale .22s var(--pop); transform-origin: 50% 100%;
+    font: 600 13px/1 'Pixelify', ui-monospace, monospace; color: var(--ink); letter-spacing: .02em; white-space: nowrap;
+    border-image-source: var(--f-tag); padding: 0 3px 1px;
+  }
+  .tag.on { opacity: 1; scale: 1; }
+
+  .scrim { position: fixed; inset: 0; z-index: 6; background: rgba(26, 20, 24, .35); pointer-events: none; animation: wudfade .2s ease-out both; }
+  .scrim.out { animation: wudfade .15s ease-in reverse both; }
+  .card, .bar { font: 500 15px/1.3 'Pixelify', ui-monospace, monospace; color: var(--ink); }
+  .card { position: fixed; left: 50%; top: 50%; translate: -50% -50%; width: min(92vw, 400px); max-height: min(76vh, calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 48px)); overflow-y: auto; padding: 8px 9px 6px; z-index: 7; animation: wudcard .26s var(--pop) both; }
+  .card.wide { width: min(96vw, 440px); padding: 6px 4px 4px; }
+  .card.out { animation: wudcardout .14s ease-in both; pointer-events: none; }
+  .card h2 { margin: 0 0 2px; font: 400 30px/1.05 'Jacquard', 'Pixelify', serif; letter-spacing: .01em; }
+  .card.wide h2, .card.wide .sub, .card.wide .acts { margin-left: 5px; margin-right: 5px; }
+  .flourish { display: block; width: 58px; height: 6px; margin: 3px 0 7px; }
+  .card.wide .flourish { margin-left: 5px; }
+  .card p { margin: 6px 0; }
+  .sub { color: var(--faded); font-size: 13px; }
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pb { font: 500 15px/1 'Pixelify', ui-monospace, monospace; color: var(--ink); background: none; padding: 4px 7px 3px; min-height: 44px; transition: transform .08s ease-out; }
+  .pb.gold { border-image-source: var(--f-gold); }
+  .pb:active:not(:disabled), .tile:active { transform: translateY(2px); border-image-source: var(--f-btn-down); }
+  .pb.gold:active:not(:disabled) { border-image-source: var(--f-gold-down); }
+  .pb:disabled { opacity: .45; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, 48px); gap: 6px; }
+  .tile { width: 48px; height: 50px; padding: 0; background: none; display: grid; place-items: center; transition: transform .08s ease-out; }
+  .board { display: grid; gap: 6px; max-width: 320px; margin: 8px auto 0; }
+  .lamp { aspect-ratio: 1; min-height: 48px; padding: 0; background: #4a3a3e; border: 2px solid var(--ink); display: grid; place-items: center; box-shadow: inset 0 -3px 0 #0003; transition: background .14s, transform .1s var(--pop), box-shadow .14s; }
+  .lamp:active { transform: scale(.94); }
+  .lamp.peek { background: var(--parchment-deep); }
+  .lamp.on { background: var(--gold); box-shadow: inset 0 0 0 3px #fff4c4, 0 0 0 2px #edbf5755; }
+  .quest { display: flex; flex-direction: column; gap: 1px; padding: 7px 0; background: linear-gradient(90deg, var(--parchment-shade) 40%, transparent 0) bottom / 5px 2px repeat-x; }
+  .quest b { font-weight: 600; }
+  .quest span { font-size: 13px; color: var(--ink-soft); }
+  .quest.done { opacity: .5; }
+  .quest.done b { text-decoration: line-through; }
+  .bar { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 12px); display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 1px 0 5px; z-index: 5; animation: wudbar .28s var(--pop) both; font-size: 14px; }
+
+  /* the map: a corner glance, and a chart to travel by */
+  /* zoom slider: a faint gold line on the right edge that opens into a little rail when touched */
+  .zs { position: fixed; right: 0; top: 50%; translate: 0 -50%; width: 30px; height: min(230px, 34vh); padding: 18px 6px 18px 0; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; touch-action: none; transition: opacity .25s ease-out, width .22s var(--pop); }
+  .zs.open { width: 46px; }
+  .zs.hide { opacity: 0; pointer-events: none; }
+  .zs-rail { position: relative; flex: 1; width: 4px; margin-right: 1px; background: var(--gold); opacity: .42; box-shadow: 0 0 0 1px #3a262240; transition: width .22s var(--pop), margin .22s var(--pop), opacity .2s, background-color .2s, box-shadow .2s; }
+  .zs.open .zs-rail { width: 12px; margin-right: 10px; opacity: 1; background: var(--parchment); box-shadow: 0 0 0 2px var(--ink), inset 0 -3px 0 var(--parchment-shade), 2px 3px 0 2px #0004; }
+  .zs-tick { position: absolute; left: 50%; width: 4px; height: 4px; translate: -50% -50%; background: var(--gold-deep); opacity: 0; transition: opacity .2s; }
+  .zs.open .zs-tick { opacity: .75; }
+  .zs-knob { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; translate: -50% -50%; rotate: 45deg; background: var(--gold); box-shadow: 0 0 0 1px var(--ink); transition: top .2s var(--out), width .22s var(--pop), height .22s var(--pop), box-shadow .2s; }
+  .zs.open .zs-knob { width: 17px; height: 17px; box-shadow: 0 0 0 2px var(--ink), inset 2px 2px 0 #fff4c4, inset -2px -2px 0 var(--gold-deep), 2px 3px 0 1px #0004; }
+  .zs.drag .zs-knob { transition: width .22s var(--pop), height .22s var(--pop), box-shadow .2s; }
+  .zs-end { position: absolute; right: 13px; font: 600 15px/1 'Pixelify', ui-monospace, monospace; color: var(--parchment); text-shadow: 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 1px 0 var(--ink), 0 -1px 0 var(--ink), 1px 2px 0 var(--ink); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .zs-end.top { top: -2px; } .zs-end.bot { bottom: -3px; }
+  .zs.open .zs-end { opacity: 1; }
+  .mini { position: fixed; left: 14px; top: calc(env(safe-area-inset-top) + 66px); width: 132px; padding: 0; background: none; border-style: solid; border-color: transparent; border-width: 6px 6px 8px; border-image: var(--f-map) 3 3 4 fill / 6px 6px 8px; z-index: 3; transition: opacity .22s ease-out, scale .22s var(--out); transform-origin: 0 0; }
+  .mini.hide { opacity: 0; scale: .9; pointer-events: none; }
+  .mini:active { scale: .96; }
+  .mini canvas, .map > canvas:first-child { display: block; width: 100%; height: 100%; }
+  .map { position: relative; width: 100%; border-style: solid; border-color: transparent; border-width: 6px 6px 8px; border-image: var(--f-map) 3 3 4 fill / 6px 6px 8px;
+    background-image: radial-gradient(circle, #ffffff14 1px, transparent 1.5px); background-size: 14px 14px; }
+  .map > canvas:first-child { filter: drop-shadow(0 3px 0 #0006); }
+  .pin { position: absolute; translate: -50% -50%; min-width: 44px; min-height: 40px; padding: 0; background: none; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font: 600 11px/1 'Pixelify', ui-monospace, monospace; color: var(--ink); transition: scale .12s var(--pop); }
+  .pin:active { scale: 1.14; }
+  .pin i { width: 9px; height: 9px; background: var(--gold); border: 2px solid var(--ink); transform: rotate(45deg); box-shadow: 1px 1px 0 #0005; }
+  .pin span { margin-top: 3px; border-width: 4px 4px 6px; border-image: var(--f-tag) 3 3 4 fill / 4px 4px 6px; padding: 0 1px; white-space: nowrap; }
+  /* the wider lands are written straight onto the chart, like the title over the village */
+  .pin.land span { border: 0; margin-top: 1px; font: 400 19px/1 'Jacquard', serif; color: var(--parchment); letter-spacing: .02em; text-shadow: 1px 0 0 var(--ink), -1px 0 0 var(--ink), 0 1px 0 var(--ink), 0 -1px 0 var(--ink), 1px 2px 0 var(--ink); }
+  .pin.land i { width: 7px; height: 7px; background: var(--parchment); }
+  .you, .trader { position: absolute; width: 9px; height: 9px; translate: -50% -50%; rotate: 45deg; background: #e0483c; border: 2px solid #fff4c4; pointer-events: none; z-index: 2; }
+  .you::after { content: ''; position: absolute; inset: -4px; border: 2px solid #fff4c4; animation: wudping 1.4s ease-out infinite; }
+  .mini .you { width: 7px; height: 7px; border-width: 1px; }
+  .trader { background: #6ad0c8; width: 8px; height: 8px; }
+  .legend { display: flex; gap: 14px; align-items: center; margin: 8px 5px 0; font-size: 12px; color: var(--faded); }
+  .legend b { position: static; translate: none; display: inline-block; margin-right: 7px; vertical-align: -1px; }
+  .legend b::after { display: none; }
+  .rose { position: absolute; right: 6px; bottom: 6px; width: 30px; height: 30px; opacity: .9; pointer-events: none; }
+
+  @keyframes wudfade { from { opacity: 0; } }
+  @keyframes wudcard { from { opacity: 0; scale: .9; translate: -50% calc(-50% + 10px); } }
+  @keyframes wudcardout { to { opacity: 0; scale: .95; translate: -50% calc(-50% + 6px); } }
+  @keyframes wudbar { from { opacity: 0; translate: 0 16px; } }
+  @keyframes wudping { from { opacity: .9; scale: .6; } to { opacity: 0; scale: 1.9; } }
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card.out, .scrim, .scrim.out, .bar { animation-duration: .01s; }
+    .you::after { animation: none; opacity: 0; }
+    .tag, .mini, .pin, .pb, .tile, .lamp { transition: opacity .15s; }
   }
 </style>
+<script>
+// Pixel frames to match PixelFrame / Parchment in Theme.swift: a stepped outline, a fill, a faint inner highlight
+// and a hard drop shadow, as a 7 x 8 unit SVG that border-image stretches (one unit = one pixel step).
+(function () {
+  const stepped = (x0, y0, x1, y1) => `M${x0 + 2} ${y0}H${x1 - 2}V${y0 + 1}H${x1 - 1}V${y0 + 2}H${x1}V${y1 - 2}H${x1 - 1}V${y1 - 1}H${x1 - 2}V${y1}H${x0 + 2}V${y1 - 1}H${x0 + 1}V${y1 - 2}H${x0}V${y0 + 2}H${x0 + 1}V${y0 + 1}H${x0 + 2}Z`;
+  const frame = (fill, line, shadow, hi, drop = 1) => 'url("data:image/svg+xml,' + encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='7' height='8' viewBox='0 0 7 8' shape-rendering='crispEdges'>` +
+    (shadow && drop ? `<path d='${stepped(0, drop, 7, 7 + drop)}' fill='${shadow}'/>` : '') +
+    `<path d='${stepped(0, 0, 7, 7)}' fill='${line}'/><path d='${stepped(1, 1, 6, 6)}' fill='${fill}'/>` +
+    (hi ? `<path d='M2 1.5H5M1.5 2V5' stroke='${hi}' stroke-width='.34' fill='none'/>` : '') + `</svg>`) + '")';
+  const ink = '#3a2622', r = document.documentElement.style;
+  r.setProperty('--f-card', frame('#faf2de', ink, '#3a262259', '#ffffff99'));
+  r.setProperty('--f-tag', frame('#faf2de', ink, '#3a262259', ''));
+  r.setProperty('--f-btn', frame('#edddbd', ink, '#3a262266', '#ffffff66'));
+  r.setProperty('--f-btn-down', frame('#e0cfa9', ink, '', ''));
+  r.setProperty('--f-gold', frame('#edbf57', ink, '#3a262266', '#fff4c4aa'));
+  r.setProperty('--f-gold-down', frame('#dcae48', ink, '', ''));
+  r.setProperty('--f-map', frame('#2a2f3c', ink, '#3a262266', '#edbf57'));
+})();
+</script>
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -27,7 +143,9 @@
 <script src="world.js"></script>
 <script src="interiors.js"></script>
 <script src="wares.js"></script>
-  <script src="more.js"></script>
+<script src="more.js"></script>
+<script src="frontier.js"></script>
+<script src="rooms.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
