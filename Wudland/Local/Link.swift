@@ -89,14 +89,18 @@ final class LinkHub {
 
     /// Loaded once and kept in memory, so the code can never drift between reads even if the Keychain is briefly unavailable.
     @ObservationIgnored private var cachedSecret: SymmetricKey?
+    @ObservationIgnored private var transientSecret: SymmetricKey?
     private var secret: SymmetricKey {
         if let k = cachedSecret { return k }
         let found = Keychain.lookup("token.secret")
         if let d = found.data, d.count == 32 { cachedSecret = SymmetricKey(data: d); return cachedSecret! }
         // only mint a new secret when there genuinely isn't one; if the Keychain is just unreadable for a moment,
         // use a throwaway key for now and try the real one again next time
+        guard found.status == errSecItemNotFound || found.data != nil else {
+            if transientSecret == nil { transientSecret = SymmetricKey(size: .bits256) }
+            return transientSecret!
+        }
         let k = SymmetricKey(size: .bits256)
-        guard found.status == errSecItemNotFound || found.data != nil else { return k }
         Keychain.set(k.withUnsafeBytes { Data($0) }, "token.secret")
         cachedSecret = k
         return k
@@ -110,7 +114,7 @@ final class LinkHub {
         return String(format: "%06d", n % 1_000_000)
     }
     /// a fresh token secret: every code shown before stops working (links already made keep working)
-    func rotateToken() { Keychain.set(nil, "token.secret"); cachedSecret = nil; _ = secret }
+    func rotateToken() { Keychain.set(nil, "token.secret"); cachedSecret = nil; transientSecret = nil; _ = secret }
 
     static func pairTopic(_ code: String) -> String {
         let h = SHA256.hash(data: Data("wudland-pair-v1:\(code)".utf8)).map { String(format: "%02x", $0) }.joined()

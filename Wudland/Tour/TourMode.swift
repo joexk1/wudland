@@ -217,30 +217,57 @@ extension TourMode {
             _ = await eval(game, prelude)
             try? "ready".write(toFile: dir + "/ready", atomically: true, encoding: .utf8)
             var n = 1
+            var pending: String? = nil
             while true {
                 try? await Task.sleep(for: .milliseconds(40))
+                if let src = pending {
+                    // WebKit's process may have died mid-command; the village reloaded with fresh state,
+                    // so wait for the game, re-install the bridge, then run the same command again.
+                    if !game.ready { continue }
+                    guard await eval(game, prelude, timeout: 8) == "ok" else { continue }
+                    let out = await eval(game, src)
+                    if !out.hasPrefix("ERR") {
+                        pending = nil
+                        try? out.write(toFile: "\(dir)/out.\(n).txt", atomically: true, encoding: .utf8)
+                        n += 1
+                    }
+                    continue
+                }
                 let path = "\(dir)/in.\(n).js"
                 guard let src = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
                 try? fm.removeItem(atPath: path)
                 let out = await eval(game, src)
+                if out.hasPrefix("ERR") {
+                    pending = src
+                    continue
+                }
                 try? out.write(toFile: "\(dir)/out.\(n).txt", atomically: true, encoding: .utf8)
                 n += 1
             }
         }
     }
 
-    @MainActor private static func eval(_ game: Game, _ src: String) async -> String {
-        guard let wv = game.webView else { return "ERR: no webview" }
-        return await withCheckedContinuation { c in
+    /// evaluateJavaScript wrapped with a timeout: if WebKit's content process died while the command was
+    /// pending, the completion handler never fires, and a plain continuation would block the bridge forever.
+    @MainActor private static func eval(_ game: Game, _ src: String, timeout seconds: Double = 12) async -> String {
+        await withCheckedContinuation { c -> Void in
+            var resolved = false
+            func resolve(_ v: String) {
+                guard !resolved else { return }
+                resolved = true
+                c.resume(returning: v)
+            }
+            guard let wv = game.webView else { resolve("ERR: no webview"); return }
             wv.evaluateJavaScript(src) { r, e in
-                if let e { c.resume(returning: "ERR: \(e.localizedDescription)"); return }
+                if let e { resolve("ERR: \(e.localizedDescription)"); return }
                 switch r {
-                case nil: c.resume(returning: "null")
-                case let s as String: c.resume(returning: s)
-                case let n as NSNumber: c.resume(returning: CFGetTypeID(n) == CFBooleanGetTypeID() ? (n.boolValue ? "true" : "false") : n.stringValue)
-                default: c.resume(returning: "null")
+                case nil: resolve("null")
+                case let s as String: resolve(s)
+                case let n as NSNumber: resolve(CFGetTypeID(n) == CFBooleanGetTypeID() ? (n.boolValue ? "true" : "false") : n.stringValue)
+                default: resolve("null")
                 }
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { resolve("ERR: timeout") }
         }
     }
 
