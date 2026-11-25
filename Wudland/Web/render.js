@@ -131,6 +131,7 @@ function drawLeaves(scene, V, t) {
       zb[i] = px[n + 2];
       pix[i] = px[n + 3];
       V.kinds[i] = K_LEAF;
+      if (leaf.glow) V.emit[i] = 1;   // lit-up blossom and fruit on the step tree keep their colour at night
     }
     if (leaf.k % 2 === 0) castShadow(leaf.x + swayX * .12, leaf.y, leaf.z, leaf.r);
   }

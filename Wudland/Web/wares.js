@@ -91,7 +91,7 @@ function stockFor(npc) {
     const id = pool[Math.floor(r() * pool.length)], it = ITEMS[id];
     if (!it || picks.has(id)) continue;
     if (r() < it.rarity * .16) continue;            // rarer goods turn up less often
-    const qty = it.kind === 'hat' || it.kind === 'furniture' || it.kind === 'wear' ? 1 : 1 + Math.floor(r() * 3);
+    const qty = it.kind === 'hat' || it.kind === 'furniture' || it.kind === 'wear' || it.kind === 'dye' ? 1 : 1 + Math.floor(r() * 3);
     const price = Math.max(1, Math.round(it.value * MARKUP[it.rarity] * (.9 + r() * .25)));
     picks.set(id, { id, qty, price });
   }
@@ -113,11 +113,12 @@ function econChanged(note) {
   BR({ type: 'econ', state: publicEcon(), note: note || null });
 }
 function publicEcon() {
-  return { worn: ECON.worn || {}, companion: ECON.companion, crowns: ECON.crowns, inv: Object.entries(ECON.inv).filter(([, n]) => n > 0).map(([id, n]) => ({ id, n })), placed: ECON.placed, hats: ECON.hats, seen: ECON.seen, dog: ECON.dog, found: ECON.found };
+  return { worn: ECON.worn || {}, companion: ECON.companion, crowns: ECON.crowns, inv: Object.entries(ECON.inv).filter(([, n]) => n > 0).map(([id, n]) => ({ id, n })), placed: ECON.placed, hats: ECON.hats, dyes: ECON.dyes || { tunic: [0], cape: [0] }, seen: ECON.seen, dog: ECON.dog, found: ECON.found };
 }
 function give(id, n = 1) {
   const it = ITEMS[id];
   if (it?.kind === 'hat') { if (!ECON.hats.includes(it.hat)) ECON.hats.push(it.hat); return; }
+  if (it?.kind === 'dye') { ownDye(it); return; }
   ECON.inv[id] = (ECON.inv[id] || 0) + n;
 }
 function take(id, n = 1) { if ((ECON.inv[id] || 0) < n) return false; ECON.inv[id] -= n; if (!ECON.inv[id]) delete ECON.inv[id]; return true; }

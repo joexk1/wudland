@@ -15,6 +15,8 @@ struct ItemDef: Codable, Identifiable {
     var icon: [String]
     var hat: String?
     var slot: String?
+    var dye: String?   // "tunic" or "cape": a colour for the mirror
+    var idx: Int?
 }
 struct BeastDef: Codable {
     var name: String
@@ -56,6 +58,9 @@ final class Economy {
     var inv: [Holding] = []
     var placed: [String] = []
     var hats: [String] = ["cavalier", "hood", "cap"]
+    /// tunic and cape colours owned (indices into Avatar.tunics / Avatar.capes); the first is free
+    var dyes: [String: [Int]] = ["tunic": [0], "cape": [0]]
+    func dyeItem(_ part: String, _ i: Int) -> ItemDef? { items.values.first { $0.dye == part && $0.idx == i } }
     var seen: [String: Int] = [:]
     var dog = "Pickle"
     var companion = "dog"
@@ -91,7 +96,7 @@ final class Economy {
         items = c.items; beasts = c.beasts; rarityNames = c.rarity; rarityRGB = c.rarityColor
     }
     func state(_ payload: Data) {
-        struct S: Decodable { var crowns: Int; var inv: [Holding]; var placed: [String]; var hats: [String]; var seen: [String: Int]; var dog: String; var found: Int; var companion: String?; var worn: [String: String]? }
+        struct S: Decodable { var crowns: Int; var inv: [Holding]; var placed: [String]; var hats: [String]; var seen: [String: Int]; var dog: String; var found: Int; var companion: String?; var worn: [String: String]?; var dyes: [String: [Int]]? }
         struct Note: Decodable {
             var error: String?; var found: String?; var creature: String?; var first: Bool?
             var bought: String?; var sold: String?; var price: Int?; var used: String?; var line: String?
@@ -101,13 +106,13 @@ final class Economy {
         guard let m = try? JSONDecoder().decode(Msg.self, from: payload) else { return }
         withAnimation(.snappy) {
             crowns = m.state.crowns; inv = m.state.inv.sorted { (items[$0.id]?.rarity ?? 0, $0.id) > (items[$1.id]?.rarity ?? 0, $1.id) }
-            placed = m.state.placed; hats = m.state.hats; seen = m.state.seen; dog = m.state.dog; found = m.state.found; companion = m.state.companion ?? "dog"; worn = m.state.worn ?? [:]
+            placed = m.state.placed; hats = m.state.hats; seen = m.state.seen; dog = m.state.dog; found = m.state.found; companion = m.state.companion ?? "dog"; worn = m.state.worn ?? [:]; dyes = m.state.dyes ?? dyes
         }
         guard let n = m.note else { return }
         if let e = n.error { show(Toast(title: e)) }
         else if let id = n.found, let it = items[id] { show(Toast(title: "Found \(it.name)", sub: rarityName(it.rarity), item: id, rarity: it.rarity)) }
         else if let id = n.creature, let b = beasts[id] { show(Toast(title: (n.first ?? false) ? "New in the bestiary!" : b.name, sub: (n.first ?? false) ? "\(b.name) \u{00B7} \(rarityName(b.rarity))" : b.lore, rarity: b.rarity)) }
-        else if let id = n.bought, let it = items[id] { show(Toast(title: "Bought \(it.name)", sub: "\(n.price ?? 0) crowns" + (it.kind == "furniture" ? " \u{00B7} it's at the cottage" : it.kind == "hat" ? " \u{00B7} try it on in the Mirror" : ""), item: id, rarity: it.rarity)) }
+        else if let id = n.bought, let it = items[id] { show(Toast(title: "Bought \(it.name)", sub: "\(n.price ?? 0) crowns" + (it.kind == "furniture" ? " \u{00B7} it's at the cottage" : it.kind == "hat" || it.kind == "dye" ? " \u{00B7} try it on in the Mirror" : ""), item: id, rarity: it.rarity)) }
         else if let id = n.sold, let it = items[id] { show(Toast(title: "Sold \(it.name)", sub: "+\(n.price ?? 0) crowns", item: id, rarity: it.rarity)) }
         else if let line = n.line { show(Toast(title: line, item: n.used)) }
     }

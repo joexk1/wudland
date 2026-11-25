@@ -16,6 +16,7 @@ enum GameEvent {
 final class Game: NSObject, WKScriptMessageHandler {
     var ready = false
     var sceneID = "village"
+    var isNight = false   // after dusk: the cottage offers Sleep
     var sceneTitle = "Wudland"
     /// a parchment card (errands, the map, a villager's game) or the arrange bar is up inside the canvas:
     /// the HUD stands down so its buttons never sit on top of it
@@ -34,7 +35,7 @@ final class Game: NSObject, WKScriptMessageHandler {
         let lordJSON = q(Lord.name)
         let reduce = UIAccessibility.isReduceMotionEnabled ? "true" : "false"
         let saveJSON = Economy.saved.flatMap { try? JSONSerialization.data(withJSONObject: $0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "null"
-        return WKUserScript(source: "window.WUD_BOOT = { lord: \(lordJSON), data: \(dataJSON), avatar: \(avatarJSON), save: \(saveJSON) }; if (\(reduce)) window.matchMedia = q => ({ matches: q.includes('reduce') });",
+        return WKUserScript(source: "window.WUD_BOOT = { lord: \(lordJSON), data: \(dataJSON), avatar: \(avatarJSON), save: \(saveJSON), steptree: \(StepTree.shared.lookJSON) }; if (\(reduce)) window.matchMedia = q => ({ matches: q.includes('reduce') });",
                             injectionTime: .atDocumentStart, forMainFrameOnly: true)
     }
 
@@ -114,6 +115,8 @@ final class Game: NSObject, WKScriptMessageHandler {
         case "save": economy.save(body)
         case "haptic":
             Haptics.play(body["style"] as? String ?? "light")
+        case "night":
+            isNight = body["on"] as? Bool ?? false
         case "card":
             webCardOpen = body["open"] as? Bool ?? false
         default: break
@@ -127,6 +130,10 @@ final class Game: NSObject, WKScriptMessageHandler {
     func setAvatar(_ look: [String: Any]) {
         lastAvatar = look
         if let d = try? JSONSerialization.data(withJSONObject: look), let s = String(data: d, encoding: .utf8) { js("wud.setAvatar(\(s))") }
+    }
+    func setStepTree(_ look: [String: Any]?) {
+        let s = look.flatMap { try? JSONSerialization.data(withJSONObject: $0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "null"
+        js("wud.setStepTree(\(s))")
     }
     func endTalk() { js("wud.endTalk()") }
     func leave() { js("wud.leave()") }

@@ -91,7 +91,7 @@ final class WizardBook {
     private func answer() async throws -> String {
         if TourMode.on { try await Task.sleep(for: .seconds(1.6)); return TourMode.wizardReply(pages.last?.text ?? "") }
         let provider = UserDefaults.standard.string(forKey: "wizard.provider") ?? "device"
-        let instructions = "You are Thistlewick, a kindly wizard in Wudland. Speak plainly with a little medieval warmth. You are a chat companion, not an agent that can act on the world. Never claim to have changed calendars, reminders, files or linked computers. Do not invent personal facts."
+        let instructions = "You are Thistlewick, the wizard of Wudland: centuries old, vain about your beard, fond of tea, terrible puns and long-winded spells that mostly make sparkles. You live in the tower with a cauldron that sulks. You are good company: chat about anything, have opinions, tell stories, joke, ask questions back, and help think things through. Speak plainly with a little medieval warmth. You are a chat companion, not an agent that can act on the world: never claim to have changed calendars, reminders, files or linked computers. Invent freely about yourself and the village, but never invent facts about the person you are talking to."
         if provider == "device" {
             guard Conversation.modelReady else { model = "the old book"; return Self.bookReply(pages.last?.text ?? "") }
             model = "on this phone"

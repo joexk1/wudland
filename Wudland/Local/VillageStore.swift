@@ -42,7 +42,7 @@ final class VillageStore {
         let next = Village(generated_at: nil, mail: LinkHub.shared.mail,
                           calendar: sources.almanac(), notices: Notices(notes: reminders.prefix(30).map {
             Note(id: $0.id, title: $0.title, body: ($0.due.map { "Due: \(When.ago($0))\n" } ?? "") + ($0.notes ?? ""), at: $0.due, read: false)
-        }), weather: weather ?? village.weather, agents: LinkHub.shared.agents, music: await sources.music())
+        }), weather: Connector.weather.isOn ? (weather ?? village.weather) : nil, agents: LinkHub.shared.agents, music: await sources.music())
         updated = .now
         // nothing new: don't rewrite the file or re-send the whole village to the canvas every few seconds
         guard let sig = try? JSONEncoder().encode(next), sig != lastSig else { return }

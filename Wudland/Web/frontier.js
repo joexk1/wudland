@@ -35,6 +35,38 @@ Object.assign(MERCHANTS, {
 const ETC_SELL = { odette: ['m_coin', 'seaglass'], hilda: ['fernseed'], gearwin: ['fossil'], tobias: ['bonecharm'] };
 for (const [m, ids] of Object.entries(ETC_SELL)) MERCHANTS[m].sells.push(...ids);
 
+/* ---------- dyes: tunic and cape colours, bought or traded for, then worn at the mirror ---------- */
+// the same colours, in the same order, as Avatar.tunics / Avatar.capes in Sheets.swift. The first of each is what you
+// arrive in; the rest turn up at the stalls (the rarer the colour, the less often).
+const DYE_COLOURS = {
+  tunic: [['Moss Green', [66, 112, 92]], ['Cornflower', [70, 96, 150]], ['Madder Red', [150, 60, 56]], ['Heather', [110, 80, 140]], ['Mustard', [200, 150, 70]], ['Slate', [80, 80, 90]]],
+  cape: [['Crimson', [168, 60, 52]], ['Midnight', [60, 80, 140]], ['Forest', [70, 110, 70]], ['Raven', [60, 50, 60]], ['Gilded', [200, 170, 90]], ['Ivory', [236, 228, 210]]],
+};
+const DYE_RARITY = { tunic: [0, 0, 1, 1, 2, 1], cape: [0, 1, 1, 2, 3, 3] };
+const DYE_DESC = { tunic: ['Freshly dyed and still smells of the vat.', 'Bright as a summer sky.', 'Dyed with madder root. Bold choice.', 'The colour of the hills in August.', 'Loud, cheerful, impossible to lose in a crowd.', 'Quiet, serious, very knightly.'],
+  cape: ['', 'For dramatic exits at dusk.', 'Blends in with the Whisperwood. Mostly.', 'Swishes beautifully. Ravens approve.', 'Spun with real gold thread. Allegedly.', 'Rare and pale as moonlight. Keep it out of the mud.'] };
+for (const [part, cols] of Object.entries(DYE_COLOURS)) cols.forEach(([nm, c], i) => {
+  if (!i) return;
+  const r = DYE_RARITY[part][i];
+  ITEMS[`dye_${part}_${i}`] = { name: `${nm} ${part === 'tunic' ? 'Tunic' : 'Cape'}`, kind: 'dye', dye: part, idx: i, value: [18, 34, 60, 110][r], rarity: r,
+    desc: DYE_DESC[part][i] + ' Try it on at the mirror.', pal: { a: c, b: c.map(v => v * .72 | 0) },
+    icon: part === 'tunic' ? ['a...a', 'aaaaa', '.aba.', '.aaa.', '.aaa.'] : ['.bbb.', 'aaaaa', 'aaaaa', 'aaaaa', 'a.a.a'] };
+});
+// Odette dyes everything; the Aimless Merchant and the bard carry the showier capes
+MERCHANTS.odette.sells.push(...Object.keys(ITEMS).filter(id => id.startsWith('dye_'))); MERCHANTS.odette.slots += 2;
+MERCHANTS.merchant.sells.push('dye_cape_4', 'dye_cape_5', 'dye_tunic_3');
+MERCHANTS.fennick.sells.push('dye_cape_1', 'dye_cape_3', 'dye_tunic_4');
+// the first time dyes exist, keep whatever the player already had on, so nobody is undressed by an update
+if (!ECON.dyes) {
+  const av = (window.WUD_BOOT || {}).avatar || {}, idx = (part, c) => c ? DYE_COLOURS[part].findIndex(([, d]) => d.join() === c.join()) : -1;
+  ECON.dyes = { tunic: [...new Set([0, Math.max(0, idx('tunic', av.shirt))])], cape: [...new Set([0, Math.max(0, idx('cape', av.cape))])] };
+}
+function ownDye(it) {
+  ECON.dyes = ECON.dyes || { tunic: [0], cape: [0] };
+  const own = ECON.dyes[it.dye] = ECON.dyes[it.dye] || [0];
+  if (!own.includes(it.idx)) own.push(it.idx);
+}
+
 for (const [id, it] of Object.entries(ITEMS)) it.id = id;
 
 /* ---------- who lives out there ---------- */
@@ -168,7 +200,10 @@ function highlands(scene) {
     let col = k < .7 ? MEADOW : k < 1.7 ? HILL : k < TREELINE - .6 ? FOREST : k < TREELINE + .5 ? SCRUB : k < TREELINE + 1.5 ? (noise(x * 3, y * 1.2) > .5 ? SCREE : ROCK) : k < SNOWLINE ? (noise(x * 2, y * 2) > .5 ? ROCK : ROCK2) : SNOWY;
     if (col === SNOWY && L < .2 + noise(x * 1.3, y * 1.3 + 4) * .16 && k < SNOWLINE + 3.5) col = noise(x * 2.4, y * 2.4) > .45 ? ROCK : ROCK2;   // faces too steep to hold snow show their stone
     else if (col !== SNOWY && k > SNOWLINE - 2 && L > .5 && noise(x * 1.7 + 9, y * 1.7) > .56) col = SNOWY;   // and snow lingers on the ledges below
-    else if (col === SNOWY && lit < .5) col = SNOWSH;
+    // winter: snow over every slope that can hold it, but painted here with the slope's light, so the range keeps
+    // its shape instead of going flat white (the generic snow pass in quad() is told to leave these alone)
+    if (SNOW && h >= 1 && col !== ROCK && col !== ROCK2 || SNOW && h >= 1 && k < TREELINE + .5) col = SNOWY;
+    if (col === SNOWY && lit < .5) col = SNOWSH;
     const steps = Math.round((.42 + lit * .72) * 7) / 7;        // a few flat tones, like painted pixels
     return h < 1 ? col : mixc([78, 72, 104], col, clamp(steps, .5, 1.12));
   };
@@ -176,8 +211,8 @@ function highlands(scene) {
     const g = j * (n + 1) + i, a = H[g], b = H[g + 1], d = H[g + n + 1], e = H[g + n + 2];
     if (Math.max(a, b, d, e) < .14) continue;
     const x = x0 + i * c, y = y0 + j * c, c1 = paint(x, y, a, b, d), c2 = paint(x + c * .5, y + c * .5, d, e, a);
-    quad([x, y, a], [c, 0, b - a], [0, c, d - a], (s, t, o) => { o.c = c1; o.flat = true; }, true, [0, 0, 1]);
-    quad([x + c, y + c, e], [-c, 0, d - e], [0, -c, b - e], (s, t, o) => { o.c = c2; o.flat = true; }, true, [0, 0, 1]);
+    quad([x, y, a], [c, 0, b - a], [0, c, d - a], (s, t, o) => { o.c = c1; o.flat = true; o.snowed = true; }, true, [0, 0, 1]);
+    quad([x + c, y + c, e], [-c, 0, d - e], [0, -c, b - e], (s, t, o) => { o.c = c2; o.flat = true; o.snowed = true; }, true, [0, 0, 1]);
   }
   // the forest climbs the lower slopes: thick and tall at the foot, thinner and smaller with every step up, and at the
   // treeline only wind-bent scrub. Nothing grows on the scree or the snow.
@@ -612,7 +647,7 @@ function quests() {
   const r = rngFrom(strHash('q' + d)), givers = {}, pool = [...GIVERS].sort(() => r() - .5).slice(0, 5);
   const pick = a => a[r() * a.length | 0];
   for (const npc of pool) {
-    const roll_ = r(), tier = roll_ < .5 ? 0 : roll_ < .86 ? 1 : 2, kind = pick(['lights', 'chant', 'match', 'hunt', 'bring']);
+    const roll_ = r(), tier = roll_ < .5 ? 0 : roll_ < .86 ? 1 : 2, kind = pick(['lights', 'chant', 'match', 'hunt', 'bring', 'weave', 'slide']);
     const q = { npc, tier, kind, state: 'open' };
     if (kind === 'bring') q.item = pick(BRINGS[tier]);
     if (kind === 'hunt') q.spot = pick(HUNT_SPOTS);
@@ -629,6 +664,8 @@ function questAsk(q) {
   if (q.kind === 'lights') return `The lamps in the old shrine went out, ${who}. Could you set them right?`;
   if (q.kind === 'chant') return `I can never hold this chant in my head, ${who}. Run it with me?`;
   if (q.kind === 'match') return `My whole shelf fell over, ${who}. Help me pair it all back up?`;
+  if (q.kind === 'weave') return q.tier === 2 ? `I've lost the pattern for my best tapestry, ${who}, and only kept the counts. Could you weave it back?` : `My loom has tangled, ${who}. The counts are all I have left. Weave it with me?`;
+  if (q.kind === 'slide') return `Some prankster slid the tiles of my mosaic all about, ${who}. Put them right?`;
   if (q.kind === 'bring') return `I would pay well for ${ITEMS[q.item].name}, ${who}. Have you one to spare?`;
   return `I buried something ${q.spot[1]} and cannot find it, ${who}. Walk about; you will feel it when you are close.`;
 }
@@ -645,7 +682,14 @@ function runGame(q, a) {
   const after = ok => { if (ok) reward(q); release(a); };
   const t = q.tier;
   if (q.kind === 'lights') game_lights(3 + t, after);
-  else if (q.kind === 'chant') game_chant(4 + t * 2, after);
+  else if (q.kind === 'chant') game_chant(4 + t * 2 + (t === 2 ? 1 : 0), after);
+  else if (q.kind === 'weave') {
+    // proper jobs weave an item's own little picture; the hard ones a full 8x8 tapestry
+    const r = rngFrom(strHash(q.npc + dayNo()));
+    if (t === 2) { const names = Object.keys(PATTERNS), nm = names[r() * names.length | 0]; game_weave(nm, PATTERNS[nm], after, { quit: 'Give up' }); }
+    else { const [nm, icon] = itemPattern(r); game_weave(nm, icon, after, { quit: 'Give up' }); }
+  }
+  else if (q.kind === 'slide') game_slide(t === 2 ? 4 : 3, after);
   else game_match(3 + t * 2, after);
 }
 // returns true if this conversation became a task card instead
@@ -691,8 +735,9 @@ function stepHunt(dt) {
 }
 function questLog() {
   const q = quests(), { body, acts } = openCard('Today\'s Errands', 'New favours are asked every morning. Look for a gold "!".');
+  dailySection(body);
   for (const g of Object.values(q.givers)) {
-    const name = (CAST[g.npc]?.name || g.npc), t = g.kind === 'bring' ? `Bring ${ITEMS[g.item].name}` : g.kind === 'hunt' ? `Dig ${g.spot[1]}` : { lights: 'Fix the rune lamps', chant: 'Learn a chant', match: 'Sort a shelf' }[g.kind];
+    const name = (CAST[g.npc]?.name || g.npc), t = g.kind === 'bring' ? `Bring ${ITEMS[g.item].name}` : g.kind === 'hunt' ? `Dig ${g.spot[1]}` : { lights: 'Fix the rune lamps', chant: 'Learn a chant', match: 'Sort a shelf', weave: 'Weave a pattern', slide: 'Set a mosaic right' }[g.kind];
     const r = el('div', 'quest' + (g.state === 'done' ? ' done' : '')); r.append(el('b', '', name), el('span', '', `${t} · ${['easy', 'proper', 'hard'][g.tier]}${g.state === 'done' ? ' · done' : ''}`)); body.append(r);
   }
   act(acts, 'Close', closeCard);
@@ -765,6 +810,12 @@ function navNudge() { const p = G.player, n = G.scene.nav, [i, j] = navCell(n, p
 const BED = { x: 2.6, y: -1.8 };
 function goSleep() {
   if (G.scene?.id !== 'home' || G.player.sleeping) return;
+  // bed is for night-time: by day there is too much village to see
+  if (G.night <= .5) {
+    const k = openCard('Not sleepy yet', `The sun's still up, ${mlord()}. Come back after dusk, when the lamps are lit.`);
+    act(k.acts, 'Fair enough', () => closeCard(), true);
+    return;
+  }
   walkTo(1.6, -1.2, () => { G.player.sleeping = true; G.player.x = BED.x; G.player.y = BED.y; G.player.moving = 0; savePos(true); BR({ type: 'sfx', name: 'chime' }); });
 }
 function wake() { const p = G.player; p.sleeping = false; p.x = 1.55; p.y = -1.2; p.yaw = 0; savePos(true); }

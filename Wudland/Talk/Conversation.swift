@@ -45,8 +45,10 @@ final class Conversation {
     private func makeSession() {
         guard Self.modelReady else { session = nil; return }
         let v = villager
+        let heart = Cast.hearts[v.id] ?? (v.id.hasPrefix("agent:") ? Cast.artificerHeart : v.id.hasPrefix("chat:") ? Cast.hearts["mags"] : nil)
         let instructions = """
         You are \(v.name), \(v.role). Your manner: \(v.voice).
+        \(heart.map { "Your life: \($0)" } ?? "")
         \(Cast.world)
         \(Cast.rules)
 
@@ -60,7 +62,7 @@ final class Conversation {
     /// The opener: scripted instantly, then (if the model is up) the villager phrases it in their own words.
     func open() {
         lines = [Line(joe: false, text: "")]
-        speak(scripted: villager.greeting, prompt: "the lord has just walked up to you. Greet him in character and tell him the single most useful thing from your FACTS. Two sentences at most.")
+        speak(scripted: villager.greeting, prompt: "\(Title.the) has just walked up to you. Greet \(Title.them) in character, maybe with a word about your own day, and mention the most useful thing from your FACTS if there is one. Two sentences at most.")
     }
 
     func ask(_ text: String) {
@@ -96,7 +98,7 @@ final class Conversation {
         task = Task {
             do {
                 var shown = ""
-                let stream = session.streamResponse(to: prompt, options: GenerationOptions(temperature: 0.8, maximumResponseTokens: 220))
+                let stream = session.streamResponse(to: prompt, options: GenerationOptions(temperature: 0.95, maximumResponseTokens: 260))
                 for try await snap in stream {
                     if Task.isCancelled { return }
                     thinking = false
@@ -113,7 +115,7 @@ final class Conversation {
             } catch let e as LanguageModelSession.GenerationError {
                 thinking = false
                 if case .exceededContextWindowSize = e { makeSession() }
-                await type(scripted ?? "Forgive me, m'lord, my thoughts wandered. Ask me again?", into: idx)
+                await type(scripted ?? "Forgive me, \(Title.mlord), my thoughts wandered. Ask me again?", into: idx)
             } catch {
                 thinking = false
                 if !Task.isCancelled { await type(scripted ?? "Hmm, I lost my words there. Try again?", into: idx) }

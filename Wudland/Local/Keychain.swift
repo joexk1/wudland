@@ -33,9 +33,9 @@ enum Keychain {
 enum Lord {
     static var name: String { (UserDefaults.standard.string(forKey: "lord.name") ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     /// for prompts: "Sam" or "the lord"
-    static var called: String { name.isEmpty ? "the lord" : name }
+    static var called: String { name.isEmpty ? Title.the : name }
     /// for speech: "Sam" or "m'lord"
-    static var hail: String { name.isEmpty ? "m'lord" : name }
+    static var hail: String { name.isEmpty ? Title.mlord : name }
 }
 
 /// Files the app keeps between launches (not secret): Application Support/Wudland/<name>.

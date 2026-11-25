@@ -62,7 +62,7 @@ struct RootView: View {
                 }
 
                 if !onboarded && !showSplash && game.ready {
-                    Onboarding(game: game) { openSettings in
+                    Onboarding(game: game, avatar: avatar) { openSettings in
                         withAnimation(.easeOut(duration: 0.25)) { onboarded = true }
                         Task { await store.refresh { game.setData($0) } }
                         if openSettings { card = .settings }
@@ -88,6 +88,7 @@ struct RootView: View {
                 game.setPaused(false)
                 if case .settings = card { LinkHub.shared.startPairing() }
                 store.start { game.setData($0) }
+                Task { await StepTree.shared.refresh() }
                 Sound.shared.start(); ambience()
             case .background:
                 game.setPaused(true); store.stop(); book.close(); Sound.shared.pause()
@@ -135,7 +136,10 @@ struct RootView: View {
                 if game.sceneID == "village" { pills.transition(slide(from: .bottom)) }
                 if game.sceneID == "home" {
                     HStack(spacing: 8) {
-                        Button("Sleep") { Sound.shared.play("tap"); Haptics.play("light"); game.sleep() }.buttonStyle(PixelButtonStyle()).font(Fonts.pixel(14))
+                        if game.isNight {
+                            Button("Sleep") { Sound.shared.play("tap"); Haptics.play("light"); game.sleep() }.buttonStyle(PixelButtonStyle()).font(Fonts.pixel(14))
+                                .transition(.opacity)
+                        }
                         Button("Arrange") { Sound.shared.play("tap"); Haptics.play("light"); game.arrange() }.buttonStyle(PixelButtonStyle()).font(Fonts.pixel(14))
                     }.transition(slide(from: .bottom))
                 }
@@ -285,7 +289,7 @@ struct RootView: View {
         case .mirror: MirrorSheet(avatar: avatar, owned: game.economy.hats, econ: game.economy, onChange: { game.setAvatar(avatar.look) }, onClose: { close(c) })
         case .satchel: SatchelSheet(econ: game.economy, game: game, avatar: avatar, onClose: { close(c) })
         case .scroll: ScrollSheet(village: store.village, onClose: { close(c) })
-        case .settings: SettingsSheet(store: store, game: game, onClose: { close(c) })
+        case .settings: SettingsSheet(store: store, game: game, avatar: avatar, onClose: { close(c) })
         }
     }
 
@@ -327,6 +331,8 @@ struct RootView: View {
             await store.refresh { game.setData($0) }
         }
         store.start { game.setData($0) }
+        StepTree.shared.onChange = { game.setStepTree($0) }
+        Task { await StepTree.shared.refresh() }
         Sound.shared.start()
         #if DEBUG
         TourMode.start(game: game)

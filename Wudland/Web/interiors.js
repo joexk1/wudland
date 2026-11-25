@@ -314,7 +314,7 @@ function buildHome(data) {
   sc.with(() => {
     room(sc, { w: 8, d: 6, wall: PAL.plasterRose, floor: [168, 120, 76], windows: [{ wall: 'y', at: .35 }, { wall: 'x', at: .7 }] });
     fireplace(sc, -4, -.8, true);
-    bed(2.6, -1.8, [96, 130, 170]);
+    PICK = 93; bed(2.6, -1.8, [96, 130, 170]); PICK = 0;   // 93: tap the bed to sleep (only after dark)
     sc.obst.push({ x0: 1.9, y0: -3, x1: 3.3, y1: -.7 });
     if (ECON.placed.includes('f_rug') && ECON.inv.f_rug > 0) rug(-1.6, .2, 2.6, 2, [50, 70, 140], [236, 196, 90]);
     else rug(-1.6, .2, 2.6, 2, [170, 110, 80], [120, 70, 56]);

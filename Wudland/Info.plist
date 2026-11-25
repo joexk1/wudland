@@ -26,6 +26,10 @@
 	<true/>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Wudland reads your music library and recently played songs so the village bard can talk about what you have been listening to. Nothing leaves this iPhone.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Your daily step count waters the Step Tree on the village plaza. Steps are read only and stay on this phone.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Wudland only reads your daily step count to grow the Step Tree on the village plaza and does not write data to Apple Health.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Wudland reads your calendar events to show today’s and upcoming events in the Bell Tower. Your events stay on this iPhone.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

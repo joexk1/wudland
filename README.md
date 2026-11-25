@@ -44,6 +44,7 @@ There's no account and no Wudland server. Everything is read on the phone, apart
 | --- | --- | --- | --- |
 | The Bell Tower | Brother Tobias | Your calendar | Apple's EventKit, on the phone |
 | The Notice Board | Barnaby the Crier | Your reminders | Apple's EventKit, on the phone |
+| The Step Tree | The plaza | Your daily steps | Apple Health (HealthKit), read-only on the phone |
 | The Fields | Old Bram | The weather | Open-Meteo, for your rounded location or a town you type in |
 | The Plaza | Fennick the Bard | What you've been listening to | Your music library, on the phone |
 | The Artificers' Guild | Master Gearwin | Your coding agents | Wudland Link, end-to-end encrypted |
@@ -98,7 +99,7 @@ Scripts can also post to the Raven Post with `wudland letter "Backup finished" "
 
 ## Your data
 
-- **No account, no Wudland server.** Calendar, reminders and music are read on the phone after you allow them, and stay there. Saved secrets go in the iOS Keychain.
+- **No account, no Wudland server.** Calendar, reminders, music and daily steps are read on the phone after you allow them, and stay there. Saved secrets go in the iOS Keychain.
 - **Agent updates and letters are encrypted** with AES-256-GCM before they leave your computer. Pairing uses X25519 and HKDF-SHA256, plus the code you compare on both screens.
 - **The relay** is ntfy.sh by default, and you can run your own. It sees IP addresses, timing and the pairing announcements (computer labels and public keys). It can't read the updates or letters.
 - **Titles.** An agent's title can include the first 60 characters of its prompt. `wudland config titles off` sends the folder name instead and drops file names from notes.
@@ -136,7 +137,7 @@ Wudland/
   Resources/     bundled fonts
 ```
 
-The world is drawn by the bundled JavaScript engine inside a WKWebView. The app around it is SwiftUI, EventKit, CoreLocation and CryptoKit.
+The world is drawn by the bundled JavaScript engine inside a WKWebView. The app around it is SwiftUI, EventKit, HealthKit, CoreLocation and CryptoKit.
 
 ## Status
 

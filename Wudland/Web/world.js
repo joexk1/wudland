@@ -176,8 +176,16 @@ function buildVillage(data) {
     tower(scene); chapel(scene);
     // the plaza
     const [wx, wy] = at(PLAZA.u + .2, PLAZA.v - .4);
-    PICK = 0; well(scene, wx, wy);
-    sky.push({ cx: wx, cy: wy, r: 1.15 });
+    // the Step Tree grows where the well stood, once step data is on (StepTree.swift); otherwise the old well
+    const st = data?.steptree || (typeof STEP_TREE !== 'undefined' ? STEP_TREE : null);
+    if (st && typeof stepTree === 'function') {
+      PICK = 79; const t = stepTree(scene, wx, wy, st); PICK = 0;   // 79: tap the tree for its name
+      sky.push({ cx: wx, cy: wy, r: 1.25 });
+      scene.props.steptree = { x: wx, y: wy, top: t.top, name: t.name };
+    } else {
+      PICK = 0; well(scene, wx, wy);
+      sky.push({ cx: wx, cy: wy, r: 1.15 });
+    }
     scene.props.well = { x: wx, y: wy };
     const [nbx, nby] = at(3.4, 2.6);
     noticeBoard(scene, nbx, nby, (data?.notices?.notes || []).length || 3);

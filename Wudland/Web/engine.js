@@ -127,7 +127,7 @@ function levelOf(nx, ny, nz) {
 // The workhorse: paint a parallelogram (or the triangle half of it) sampled densely in world space.
 // shade(s, t, out) receives distances along each edge and fills out.c (rgb array), out.dl (level offset),
 // out.flat (no dither), out.kind / out.emit; returning false leaves a hole.
-const OUT = { c: null, dl: 0, flat: false, kind: 0, emit: 0 };
+const OUT = { c: null, dl: 0, flat: false, kind: 0, emit: 0, snowed: false };   // snowed: the shader painted its own snow, keep it
 function quad(o, eu, ev, shade, tri = false, nrm = null) {
   const lu = Math.hypot(eu[0], eu[1], eu[2]), lv = Math.hypot(ev[0], ev[1], ev[2]);
   if (!lu || !lv) return;
@@ -148,10 +148,10 @@ function quad(o, eu, ev, shade, tri = false, nrm = null) {
       if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
       const i = iy * W + ix, d = v * COS + z * SIN;
       if (d <= zb[i]) continue;
-      OUT.c = null; OUT.dl = 0; OUT.flat = false; OUT.kind = KIND; OUT.emit = EMIT;
+      OUT.c = null; OUT.dl = 0; OUT.flat = false; OUT.kind = KIND; OUT.emit = EMIT; OUT.snowed = false;
       if (shade(fa * lu, fb * lv, OUT, x, y, z) === false) continue;
       let c = OUT.c;
-      if (SNOW && up > .45 && !OUT.emit && OUT.kind !== K_WINDOW) { c = SNOW_C; OUT.dl = (hash(ix, iy) - .5) * .5; }
+      if (SNOW && up > .45 && !OUT.emit && OUT.kind !== K_WINDOW && !OUT.snowed) { c = SNOW_C; OUT.dl = (hash(ix, iy) - .5) * .5; }
       zb[i] = d;
       const ramp = rampOf(c);
       const lvl = base + OUT.dl;

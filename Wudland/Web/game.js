@@ -33,11 +33,13 @@ function zoomVisual(now) {
   const p = clamp((now - ZT.t) / ZDUR, 0, 1), e = 1 - (1 - p) ** 3, s1 = cssScale(), [m1x, m1y] = viewMid(s1);
   return { p, e, s: ZT.s0 * (s1 / ZT.s0) ** e, cx: lerp(ZT.cx, m1x, e), cy: lerp(ZT.cy, m1y, e), s1, m1x, m1y };
 }
-function zoomBegin(s0, F0, K0) {
+// `was` is where an unfinished glide had got to, measured before the new zoom changed K (measuring it after mixes the
+// new scale with the old camera and the view lurches sideways)
+function zoomBegin(s0, F0, K0, was) {
   if (STILL || !canvas.width) return;
   const now = performance.now();
   let cx, cy, s;
-  if (ZT) { const v = zoomVisual(now); cx = v.cx; cy = v.cy; s = v.s; }
+  if (was) { cx = was.cx; cy = was.cy; s = was.s; }
   else { s = s0; [cx, cy] = viewMid(s0); }
   // snapshot what is on screen now
   ghost.width = canvas.width; ghost.height = canvas.height;
@@ -63,6 +65,7 @@ function resize() {
   DPR = window.devicePixelRatio || 1;
   const wpx = innerWidth * DPR, hpx = innerHeight * DPR;
   const base = Math.round(wpx / 212), K0 = K, F0 = FAR_F, had = !!(V && G.scene);
+  const was = ZT && had ? zoomVisual(performance.now()) : null;
   // the world point under the zoom anchor (the pinch midpoint, else the screen centre) stays put
   const ax = G.zoomAt ? G.zoomAt.x : innerWidth / 2, ay = G.zoomAt ? G.zoomAt.y : innerHeight / 2, s0 = K0 / (DPR * F0);
   const wax = had ? G.cam.x + ax / s0 : 0, way = had ? G.cam.y + ay / s0 : 0;
@@ -76,7 +79,7 @@ function resize() {
   }
   const VW = Math.ceil(wpx / K) + 2, VH = Math.ceil(hpx / K) + 2;
   V = makeView(VW, VH, 14);
-  if (had && K0 / F0 !== K / FAR_F) zoomBegin(K0 / (DPR * F0), F0, K0);
+  if (had && K0 / F0 !== K / FAR_F) zoomBegin(K0 / (DPR * F0), F0, K0, was);
   canvas.width = VW; canvas.height = VH;
   canvas.style.width = VW * K / DPR + 'px'; canvas.style.height = VH * K / DPR + 'px';
   IMG = ctx.createImageData(VW, VH); IMGPIX = new Uint32Array(IMG.data.buffer);
@@ -176,7 +179,9 @@ function focusPoint() {
 function cameraTarget() {
   const [fx, fy] = focusPoint(), b = G.scene.bounds, sc = G.scene;
   const fy0 = G.talking ? clamp((1 - G.panel) * .48, .2, .5) : .52;
-  const vw = VWs, vh = VHs;
+  // the screen, not the canvas: the canvas overhangs the right and bottom edges by a pixel or two, and centring on it
+  // left the player a little up and left of middle, by a different amount at every zoom level
+  const vw = innerWidth / cssScale(), vh = innerHeight / cssScale();
   let x = fx - vw / 2, y = fy - vh * fy0;
   // small scenes (rooms, and the whole island from far off) sit centred in the space above the dialogue
   if (b.x1 - b.x0 <= vw) x = (b.x0 + b.x1) / 2 - vw / 2; else x = clamp(x, b.x0, b.x1 - vw);
@@ -351,8 +356,16 @@ function tap(cx, cy) {
     BR({ type: 'haptic', style: 'light' });
     return goEnter(id);
   }
+  // the Step Tree: a little sign with its name, and the player wanders over to look (never says how it's doing: that's the surprise)
+  const tree = sc.id === 'village' && sc.props.steptree;
+  if (tree && (pk === 79 || (() => { const [hx, hy] = sceneProject(sc, tree.x, tree.y, (tree.top || 3) * .6); return Math.abs(sx - hx) < 16 * sc.S / 14 && Math.abs(sy - hy) < 26 * sc.S / 14; })())) {
+    showLabel('The Step Tree', tree.x, tree.y, (tree.top || 3) + .5);
+    BR({ type: 'haptic', style: 'light' }); BR({ type: 'sfx', name: 'chime' });
+    return walkTo(tree.x + 1.3, tree.y + 1.3, () => { G.player.yaw = Math.PI * 1.25; });
+  }
   if (pk === 90) return walkTo(sc.exit.x, sc.exit.y, leaveInterior);
   if (pk === 91) return walkTo(.2, -1.4, () => { G.player.yaw = -Math.PI / 2; BR({ type: 'inspect', what: 'scroll' }); });
+  if (pk === 93) { BR({ type: 'haptic', style: 'light' }); return WARES_API.sleep(); }
   if (pk === 92) return walkTo(1.5, -2.0, () => { G.player.yaw = -Math.PI / 2; BR({ type: 'inspect', what: 'mirror' }); });
   // the ground
   const prev = T; T = sc.t; const g = unproject(sx, sy); T = prev;
@@ -406,6 +419,8 @@ function sky(now) {
   const day = [1 - gloom, 1 - gloom * .9, 1 - gloom * .5], dusk = [.74, .6, .78], dark = [.36, .4, .64];
   const mid = night < .5 ? mixc(day, dusk, night * 2) : mixc(dusk, dark, (night - .5) * 2);
   G.night = night;
+  // the app shows the bed's Sleep button only after dark
+  const isDark = night > .5; if (isDark !== G.dark) { G.dark = isDark; BR({ type: 'night', on: isDark }); }
   GRADE.amb = mixc(mid, [1.08, .97, .82], golden * .7);
   GRADE.night = night;
   const skyDay = gloom > .08 ? [[214, 216, 214], [230, 228, 220]] : [[236, 228, 210], [246, 238, 222]];
@@ -483,6 +498,35 @@ function drawFog() {
   }
 }
 
+/* ---------- the step tree's magic ---------- */
+const TREE_MOTE = { blooming: [[244, 190, 206], [250, 226, 232]], golden: [[255, 226, 140], [255, 244, 200], [246, 200, 84]], enchanted: [[200, 180, 255], [150, 230, 220], [255, 236, 170], [236, 226, 255]] };
+function treeMotes(s, k, sc) {
+  const cols = TREE_MOTE[s.tone], pick = () => cols[Math.random() * cols.length | 0], night = .5 + G.night * 1.5;
+  const flick = c => p => Math.sin(p.life * 5 + p.x * 3) > -.4 ? rgb(...c) : rgb(c[0] * .62, c[1] * .62, c[2] * .72);
+  const around = (r, z) => { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * r; return [s.x + Math.cos(a) * d, s.y + Math.sin(a) * d, z]; };
+  // petals (and, on the golden tree, gilded leaves) flutter down and sideways with the breeze
+  if (Math.random() < (s.tone === 'blooming' ? 1.6 : 1) * k) {
+    const [x, y, z] = around(s.r, s.z + Math.random() * 1.4), c = pick();
+    emit({ scene: sc.id, x, y, z, vx: .22 + Math.random() * .18, vy: -.12, vz: -.32 - Math.random() * .15, life: 4, wob: 2.8, c: s.tone === 'blooming' ? c : flick(c), glow: s.tone !== 'blooming' ? 1 : 0, over: true });
+  }
+  if (s.tone === 'blooming') return;
+  // motes of light rising out of the crown, busier after dark
+  if (Math.random() < (s.tone === 'enchanted' ? 4.5 : 2.2) * night * k) {
+    const [x, y, z] = around(s.r * 1.1, s.z + (Math.random() - .4) * 1.8), c = pick();
+    emit({ scene: sc.id, x, y, z, vx: (Math.random() - .5) * .12, vy: (Math.random() - .5) * .12, vz: .22 + Math.random() * .22, life: 3 + Math.random() * 2, wob: 1.6, c: flick(c), glow: 1, over: true, size: Math.random() < .2 ? 2 : 1 });
+  }
+  if (s.tone !== 'enchanted') return;
+  // a slow spiral of sparks winding up round the trunk, and light seeping up from the runes
+  if (Math.random() < 3.6 * k) {
+    const t = G.time * 1.3 + Math.random() * .3, r = 1.15 + Math.sin(G.time * .7) * .15;
+    emit({ scene: sc.id, x: s.x + Math.cos(t * 2) * r, y: s.y + Math.sin(t * 2) * r, z: .3 + (t % 3) * .9, vx: -Math.sin(t * 2) * .5, vy: Math.cos(t * 2) * .5, vz: .45, life: 2.2, c: flick(pick()), glow: 1, over: true });
+  }
+  if (Math.random() < 1.6 * k) {
+    const a = Math.random() * 6.283;
+    emit({ scene: sc.id, x: s.x + Math.cos(a) * 1.02, y: s.y + Math.sin(a) * 1.02, z: .25, vx: 0, vy: 0, vz: .35 + Math.random() * .2, life: 1.4, c: rgb(...(Math.random() < .5 ? [150, 230, 220] : [200, 180, 255])), glow: 1, over: true });
+  }
+}
+
 /* ---------- ambient particles ---------- */
 let smokeAcc = 0;
 function stepAmbient(dt) {
@@ -494,6 +538,8 @@ function stepAmbient(dt) {
   for (const s of sc.smokers) {
     const fx = ROOM_FX[s.key];   // the quiet things in the smaller rooms: steam, flour in the air, incense, fireflies
     if (fx) { fx(s, k, sc); continue; }
+    // the step tree (steptree.js): petals drift off a blooming tree; golden and enchanted trees shed light
+    if (s.key === 'enchant') { if (!STILL) treeMotes(s, k, sc); continue; }
     let rate = s.key === 'guild' ? .8 + Math.min(busy, 6) * .9 : s.key === 'magic' ? (G.wizBusy ? 6 : 1.2) : 1.9;
     if (Math.random() < rate * k) {
       if (s.key === 'motes') { if (Math.random() < 4 * k) emit({ scene: sc.id, x: (Math.random() - .5) * 6, y: (Math.random() - .5) * 6, z: .3 + Math.random() * 2, vx: (Math.random() - .5) * .2, vy: (Math.random() - .5) * .2, vz: .12, life: 3, c: p => Math.sin(p.life * 4) > -.3 ? rgb(200, 180, 255) : rgb(120, 100, 180), glow: 1, over: true }); continue; }
@@ -1026,7 +1072,7 @@ function zsBuild() {
     const r = rail.getBoundingClientRect(), f = clamp((y - r.top) / r.height, 0, 1);
     knob.style.top = f * 100 + '%';
     const z = clamp(Math.round(3 - f * zLevels()), ZOOM_MIN, 3);
-    if (z !== G.zoom) { G.zoom = z; resize(); BR({ type: 'haptic', style: 'soft' }); }
+    if (z !== G.zoom) { G.zoom = z; G.cam.follow = true; G.zoomAt = null; resize(); BR({ type: 'haptic', style: 'soft' }); }
   };
   el.addEventListener('pointerdown', e => {
     e.stopPropagation(); e.preventDefault(); el.setPointerCapture(e.pointerId);
@@ -1062,6 +1108,15 @@ window.wud = {
     }
   },
   setAvatar(look) { G.baseLook = look; redress(); },
+  // the Step Tree changed (StepTree.swift): rebake the village with it, keeping the player where they stand
+  setStepTree(info) {
+    const was = JSON.stringify(STEP_TREE), now = JSON.stringify(info || null);
+    if (was === now) return;
+    STEP_TREE = info || null;
+    const v = buildVillage(G.data);
+    G.scenes.village = v;
+    if (G.scene?.id === 'village') { const p = G.player; setScene(v, p.x, p.y, p.yaw); }
+  },
   setSpeaking(on) { G.speaking = !!on; },
   setPanel(frac) { G.panel = clamp(+frac || 0, 0, .8); },
   endTalk() { endTalk(); },
@@ -1071,7 +1126,7 @@ window.wud = {
   setHour(h) { G.hourOverride = h == null ? null : +h; sky(new Date()); },
   setReduceMotion(on) { STILL = !!on; },
   goTo(id) { if (G.scene?.id !== 'village') return; if (INTERIORS[id]) goEnter(id); },
-  zoom(step) { G.zoom = clamp(G.zoom + step, ZOOM_MIN, 3); resize(); },
+  zoom(step) { G.zoom = clamp(G.zoom + step, ZOOM_MIN, 3); G.cam.follow = true; G.zoomAt = null; resize(); },
   ...WARES_API,
 };
 

@@ -1,8 +1,29 @@
 import SwiftUI
 
+// MARK: - title
+
+/// How the village addresses you: Lord, Lady or Liege (gender-neutral). Chosen during onboarding and in Settings,
+/// read fresh each time so a change lands in the very next line a villager speaks.
+enum Title {
+    static let key = "av.form"
+    static let forms = [("lord", "Lord"), ("lady", "Lady"), ("liege", "Liege")]
+    static var form: String { UserDefaults.standard.string(forKey: key) ?? "lord" }
+    static var lord: String { form }
+    static var Lord: String { form.capitalized }
+    static var mlord: String { "m\u{2019}\(form)" }
+    static var Mlord: String { "M\u{2019}\(form)" }
+    static var the: String { "the \(form)" }
+    static var they: String { switch form { case "lord": "he"; case "lady": "she"; default: "they" } }
+    static var them: String { switch form { case "lord": "him"; case "lady": "her"; default: "them" } }
+    static var their: String { switch form { case "lord": "his"; case "lady": "her"; default: "their" } }
+    static var Their: String { their.capitalized }
+    static var needs: String { form == "liege" ? "need" : "needs" }
+    static var owes: String { form == "liege" ? "owe" : "owes" }
+}
+
 // MARK: - avatar
 
-/// the lord's look, kept in UserDefaults and handed to the canvas as a palette.
+/// the player's look, kept in UserDefaults and handed to the canvas as a palette.
 @MainActor @Observable
 final class Avatar {
     static let skins: [[Int]] = [[238, 198, 164], [220, 170, 132], [186, 132, 96], [142, 98, 72]]
@@ -16,6 +37,7 @@ final class Avatar {
     var tunic = UserDefaults.standard.integer(forKey: "av.tunic") { didSet { save() } }
     var cape = UserDefaults.standard.integer(forKey: "av.cape") { didSet { save() } }
     var hatName = UserDefaults.standard.string(forKey: "av.hatName") ?? "cavalier" { didSet { save() } }
+    var form = UserDefaults.standard.string(forKey: Title.key) ?? "lord" { didSet { UserDefaults.standard.set(form, forKey: Title.key) } }
 
     private func save() {
         let d = UserDefaults.standard
@@ -24,6 +46,8 @@ final class Avatar {
     var look: [String: Any] {
         var l: [String: Any] = ["skin": Self.skins[skin % 4], "hair": Self.hairs[hair % 6], "shirt": Self.tunics[tunic % 6], "sleeve": Self.tunics[tunic % 6], "cape": Self.capes[cape % 6]]
         let h = hatName
+        l["title"] = "m'\(form)"   // the canvas speaks this in its own lines (frontier.js mlord)
+        if form == "lady" { l["longHair"] = true; l["robe"] = true; l["hem"] = Self.capes[cape % 6]; l["robeW"] = 0.32 }
         if h != "none" { l["hat"] = h; l["hatColor"] = Self.capes[cape % 6].map { Int(Double($0) * 0.85) } }
         let plume = Self.capes[cape % 6].map { min(255, Int(Double($0) * 1.15) + 20) }
         switch h {
@@ -47,11 +71,13 @@ struct MirrorSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SheetHeader(title: "The Mirror", onClose: onClose)
-            Text("Who's the fairest lord of Wudland?").font(Fonts.pixel(13)).foregroundStyle(Ink.faded)
+            Text("Who's the fairest \(Title.lord) of Wudland?").font(Fonts.pixel(13)).foregroundStyle(Ink.faded)
             swatches("Skin", Avatar.skins, $avatar.skin)
             swatches("Hair", Avatar.hairs, $avatar.hair)
-            swatches("Tunic", Avatar.tunics, $avatar.tunic)
-            swatches("Cape", Avatar.capes, $avatar.cape)
+            swatches("Tunic", Avatar.tunics, $avatar.tunic, owned: owned("tunic", avatar.tunic))
+            swatches("Cape", Avatar.capes, $avatar.cape, owned: owned("cape", avatar.cape))
+            let more = Avatar.tunics.count + Avatar.capes.count - owned("tunic", avatar.tunic).count - owned("cape", avatar.cape).count
+            if more > 0 { Text("\(more) more tunic and cape colour\(more == 1 ? "" : "s") at the stalls. Odette dyes the most.").font(Fonts.pixel(12)).foregroundStyle(Ink.faded) }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Hat").font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft)
                 FlowRow {
@@ -66,11 +92,15 @@ struct MirrorSheet: View {
         .padding(12)
     }
     private func changed() { Sound.shared.play("tap"); Haptics.play("soft"); onChange() }
-    private func swatches(_ title: String, _ colors: [[Int]], _ sel: Binding<Int>) -> some View {
+    /// colours you can wear: the free first one, any dye you've bought, and whatever you already had on
+    private func owned(_ part: String, _ current: Int) -> [Int] {
+        Set((econ?.dyes[part] ?? [0]) + [0, current]).sorted()
+    }
+    private func swatches(_ title: String, _ colors: [[Int]], _ sel: Binding<Int>, owned: [Int]? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft)
             HStack(spacing: 4) {
-                ForEach(colors.indices, id: \.self) { i in
+                ForEach(owned ?? Array(colors.indices), id: \.self) { i in
                     Button { sel.wrappedValue = i; changed() } label: {
                         let c = colors[i]
                         let on = sel.wrappedValue == i
@@ -132,6 +162,7 @@ struct ScrollSheet: View {
 struct SettingsSheet: View {
     var store: VillageStore
     var game: Game
+    var avatar: Avatar
     var onClose: () -> Void
     @AppStorage("lord.name") private var lordName = ""
     @AppStorage("weather.town") private var town = ""
@@ -149,19 +180,29 @@ struct SettingsSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SheetHeader(title: "The Lord's Desk", onClose: onClose)
+            SheetHeader(title: "The \(Title.Lord)'s Desk", onClose: onClose)
             ScrollView {
             VStack(alignment: .leading, spacing: 18) {
             group("Your village") {
-                field("Your name", text: $lordName, placeholder: "m’lord")
+                field("Your name", text: $lordName, placeholder: Title.mlord)
                 field("Weather town", text: $town, placeholder: "or use location")
-                Text("Your calendar, reminders and music stay on this phone. Weather sends your town or rounded location to Open-Meteo.")
-                    .font(Fonts.pixel(11)).foregroundStyle(Ink.faded)
-                Button("Permissions in iOS Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }
-                    .font(Fonts.pixel(13)).buttonStyle(PixelButtonStyle())
                 Button("Refresh village") { Task { await store.refresh { game.setData($0) } } }
                     .font(Fonts.pixel(13)).buttonStyle(PixelButtonStyle())
             }
+            group("How the village knows you") {
+                HStack(spacing: 8) {
+                    ForEach(Title.forms, id: \.0) { f in
+                        Button(f.1) { avatar.form = f.0; Sound.shared.play("tap"); Haptics.play("soft"); game.setAvatar(avatar.look) }
+                            .buttonStyle(PixelButtonStyle(fill: avatar.form == f.0 ? Ink.gold : Ink.parchmentDeep)).font(Fonts.pixel(14))
+                    }
+                }
+                Text(avatar.form == "liege" ? "Liege: neither lord nor lady. Villagers say m\u{2019}liege, and they and them." : avatar.form == "lady" ? "Lady: a long braid and a gown, and m\u{2019}lady from everyone." : "Lord: a cavalier's cape, and m\u{2019}lord from everyone.")
+                    .font(Fonts.pixel(12)).foregroundStyle(Ink.inkSoft)
+            }
+            group("Connected to your day") {
+                ConnectorRows { await store.refresh { game.setData($0) } }
+            }
+            StepTreeSettings()
             group("Link a computer") {
                 TimelineView(.periodic(from: .now, by: 1)) { tick in
                     VStack(alignment: .leading, spacing: 6) {
@@ -202,7 +243,7 @@ struct SettingsSheet: View {
                 if provider != "device" {
                     Text("Your spellbook messages go directly to \(provider == "anthropic" ? "Anthropic" : "OpenAI"). API use may cost money on your provider account. Calendar, reminders and agent data are not attached automatically.")
                         .font(Fonts.pixel(12)).foregroundStyle(Ink.inkSoft)
-                    Toggle("Allow sending my spellbook messages", isOn: $remoteConsent).font(Fonts.pixel(13)).tint(Ink.leaf)
+                    Toggle("Allow sending my spellbook messages", isOn: $remoteConsent).font(Fonts.pixel(13)).toggleStyle(PixelToggleStyle())
                     field("API key", text: $apiKey, placeholder: "saved in Keychain", secure: true)
                     field("Model name", text: $remoteModel, placeholder: "from your provider")
                     Button("Save key & model") {
@@ -213,8 +254,8 @@ struct SettingsSheet: View {
                 }
             }
             group("Comforts") {
-                Toggle(isOn: Binding(get: { !soundOff }, set: { soundOff = !$0; if soundOff { Sound.shared.ambient("") } })) { Text("Sounds").font(Fonts.pixel(15)) }.tint(Ink.leaf)
-                Toggle(isOn: Binding(get: { !hapticsOff }, set: { hapticsOff = !$0 })) { Text("Haptics").font(Fonts.pixel(15)) }.tint(Ink.leaf)
+                Toggle(isOn: Binding(get: { !soundOff }, set: { soundOff = !$0; if soundOff { Sound.shared.ambient("") } })) { Text("Sounds").font(Fonts.pixel(15)) }.toggleStyle(PixelToggleStyle())
+                Toggle(isOn: Binding(get: { !hapticsOff }, set: { hapticsOff = !$0 })) { Text("Haptics").font(Fonts.pixel(15)) }.toggleStyle(PixelToggleStyle())
             }
             group("Turn the sun") {
                 Slider(value: Binding(get: { sunHour >= 0 ? sunHour : Self.nowHour },
@@ -309,5 +350,40 @@ struct FlowRow: Layout {
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
             x += s.width + spacing; row = max(row, s.height)
         }
+    }
+}
+
+// MARK: - the Step Tree
+
+/// Goal and Health for the tree on the plaza. How it looks is never shown here: you find out by walking to it.
+struct StepTreeSettings: View {
+    @State private var tree = StepTree.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                PixelIcon(rows: [".X.", "XXX", ".X."], color: Ink.goldDeep, scale: 2)
+                Text("The Step Tree").font(Fonts.pixel(13, .semibold)).foregroundStyle(Ink.inkSoft)
+            }
+            Toggle(isOn: $tree.enabled) { Text("Grow it where the well stands").font(Fonts.pixel(15)) }.toggleStyle(PixelToggleStyle())
+                .onChange(of: tree.enabled) { _, on in if on { Task { await tree.refresh() } } }
+            if tree.enabled {
+                HStack {
+                    Text("Daily goal").font(Fonts.pixel(13)).foregroundStyle(Ink.faded)
+                    Spacer()
+                    Text("\(tree.goal.formatted()) steps").font(Fonts.pixel(15, .semibold)).monospacedDigit()
+                }
+                Slider(value: Binding(get: { Double(tree.goal) }, set: { tree.setGoal(Int($0.rounded())) }),
+                       in: Double(StepTreeRules.goalRange.lowerBound)...Double(StepTreeRules.goalRange.upperBound), step: 500,
+                       onEditingChanged: { editing in if !editing { Task { await tree.refresh() } } })
+                    .tint(Ink.goldDeep)
+                if let o = tree.outcome {
+                    Text("Today \(o.todaySteps.formatted()) of \(o.goal.formatted()) steps \u{00B7} \(o.streak)-day streak" + (o.watered ? " \u{00B7} watered" : ""))
+                        .font(Fonts.pixel(12)).foregroundStyle(Ink.inkSoft).monospacedDigit()
+                }
+                if let p = tree.problem { Text(p).font(Fonts.pixel(12)).foregroundStyle(Ink.red) }
+            }
+        }
+        .foregroundStyle(Ink.ink)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import EventKit
+import HealthKit
 import CoreLocation
 import MediaPlayer
 
@@ -26,13 +27,72 @@ final class Sources: NSObject, CLLocationManagerDelegate {
 
     // MARK: permissions
 
-    var calendarAllowed: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
-    var remindersAllowed: Bool { EKEventStore.authorizationStatus(for: .reminder) == .fullAccess }
+    // allowed by iOS *and* switched on in Settings (Connectors.swift)
+    var calendarAllowed: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess && Connector.calendar.isOn }
+    var remindersAllowed: Bool { EKEventStore.authorizationStatus(for: .reminder) == .fullAccess && Connector.reminders.isOn }
     var locationAllowed: Bool { [.authorizedWhenInUse, .authorizedAlways].contains(location.authorizationStatus) }
-    var musicAllowed: Bool { MPMediaLibrary.authorizationStatus() == .authorized }
+    var musicAllowed: Bool { MPMediaLibrary.authorizationStatus() == .authorized && Connector.music.isOn }
+
+    /// Turning a connector back on: ask iOS (a real prompt if it has never been asked), report whether it's allowed.
+    func request(_ c: Connector) async -> Bool {
+        switch c {
+        case .steps:
+            // Health never says whether reading was allowed; a read that comes back without a problem is the answer
+            guard HKHealthStore.isHealthDataAvailable() else { return false }
+            let tree = StepTree.shared
+            tree.enabled = true
+            await tree.refresh()
+            return tree.problem == nil
+        case .calendar:
+            if EKEventStore.authorizationStatus(for: .event) == .notDetermined { _ = try? await events.requestFullAccessToEvents() }
+            return EKEventStore.authorizationStatus(for: .event) == .fullAccess
+        case .reminders:
+            if EKEventStore.authorizationStatus(for: .reminder) == .notDetermined { _ = try? await events.requestFullAccessToReminders() }
+            return EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+        case .weather:
+            if location.authorizationStatus == .notDetermined {
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    authWaiters.append(c)
+                    location.requestWhenInUseAuthorization()
+                    Task { try? await Task.sleep(for: .seconds(60)); self.flushAuth() }
+                }
+            }
+            // a typed-in town works without location
+            let town = (UserDefaults.standard.string(forKey: "weather.town") ?? "").trimmingCharacters(in: .whitespaces)
+            return !town.isEmpty || [.authorizedWhenInUse, .authorizedAlways].contains(location.authorizationStatus)
+        case .music:
+            if MPMediaLibrary.authorizationStatus() == .notDetermined {
+                _ = await withCheckedContinuation { (c: CheckedContinuation<MPMediaLibraryAuthorizationStatus, Never>) in
+                    MPMediaLibrary.requestAuthorization { c.resume(returning: $0) }
+                }
+            }
+            return MPMediaLibrary.authorizationStatus() == .authorized
+        }
+    }
+
+    /// one fresh read after reconnecting, in village words
+    func summary(_ c: Connector) async -> String? {
+        switch c {
+        case .steps:
+            return StepTree.shared.outcome.map { "\($0.todaySteps.formatted()) steps today" }
+        case .calendar:
+            let n = almanac()?.events.count ?? 0
+            return n == 0 ? "the book of days is clear" : "\(n) bell\(n == 1 ? "" : "s") this week"
+        case .reminders:
+            let n = await reminders().count
+            return n == 0 ? "the board is bare" : "\(n) notice\(n == 1 ? "" : "s") on the board"
+        case .weather:
+            weatherCache = nil
+            return await weather().map { "\($0.temp)\u{00B0} and \($0.kind)" }
+        case .music:
+            musicCache = nil
+            let n = await music()?.recent.count ?? 0
+            return n == 0 ? "the lute is ready" : "\(n) recent song\(n == 1 ? "" : "s")"
+        }
+    }
 
     /// Asked once, on first launch: calendar and reminders (full access, so the villagers can read and add),
-    /// then location for the weather, then the music library for the bard.
+    /// then location for the weather, then the music library for the bard, then Health for the Step Tree.
     func requestAll() async {
         if EKEventStore.authorizationStatus(for: .event) == .notDetermined { _ = try? await events.requestFullAccessToEvents() }
         if EKEventStore.authorizationStatus(for: .reminder) == .notDetermined { _ = try? await events.requestFullAccessToReminders() }
@@ -48,6 +108,10 @@ final class Sources: NSObject, CLLocationManagerDelegate {
             _ = await withCheckedContinuation { (c: CheckedContinuation<MPMediaLibraryAuthorizationStatus, Never>) in
                 MPMediaLibrary.requestAuthorization { c.resume(returning: $0) }
             }
+        }
+        // last: Health for the Step Tree. Saying yes plants it where the well stands
+        if HKHealthStore.isHealthDataAvailable() && !StepTree.shared.enabled {
+            if !(await request(.steps)) { StepTree.shared.enabled = false }
         }
     }
 
@@ -121,6 +185,7 @@ final class Sources: NSObject, CLLocationManagerDelegate {
     // MARK: weather (Open-Meteo, no key)
 
     func weather() async -> Weather? {
+        guard Connector.weather.isOn else { return nil }
         var lat: Double, lon: Double
         let chosenTown = (UserDefaults.standard.string(forKey: "weather.town") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !chosenTown.isEmpty {

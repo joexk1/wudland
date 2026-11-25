@@ -156,7 +156,7 @@ struct DialogueView: View {
                 case .chats(let cs): ForEach(cs) { c in chatRow(c) }
                 case .agents(let ns): ForEach(ns) { n in agentRow(n) }
                 case .events(let es): ForEach(es) { e in row(title: e.title, sub: When.event(e) + ((e.location ?? "").isEmpty ? "" : " \u{00B7} \(e.location!)"), mark: nil) { readEvent(e) } }
-                case .notes(let ns): ForEach(ns) { n in row(title: n.title, sub: When.ago(n.at), mark: n.read ? nil : "!") { tab = 0; convo.read("Read me \u{201C}\(n.title)\u{201D}", material: n.body, ask: "Proclaim this notice to the lord in your own words, keeping the facts exact.") } }
+                case .notes(let ns): ForEach(ns) { n in row(title: n.title, sub: When.ago(n.at), mark: n.read ? nil : "!") { tab = 0; convo.read("Read me \u{201C}\(n.title)\u{201D}", material: n.body, ask: "Proclaim this notice to \(Title.the) in your own words, keeping the facts exact.") } }
                 case .agentFacts(let n): agentFacts(n)
                 case .chatLines(let c): ForEach(Array(c.recent.enumerated()), id: \.offset) { _, m in chatLine(m) }
                 case .none: EmptyView()
@@ -250,7 +250,7 @@ struct DialogueView: View {
         tab = 0
         let material = "From: \(l.from)\nSubject: \(l.subject)\n\(l.summary ?? "")"
         convo.read("Read me \u{201C}\(l.subject)\u{201D}", material: material,
-                   ask: "the lord hands you this letter. Tell him who it's from, what it actually says, and whether he needs to do anything (with any deadline). Two or three sentences.")
+                   ask: "\(Title.the) hands you this letter. Tell \(Title.them) who it's from, what it actually says, and whether \(Title.they) \(Title.needs) to do anything (with any deadline). Two or three sentences.")
     }
     private func openChat(_ c: Chat) async {
         busyRow = c.id
@@ -259,7 +259,7 @@ struct DialogueView: View {
         let lines = c.recent
         let material = lines.suffix(24).map { "\($0.who): \($0.text)" }.joined(separator: "\n")
         convo.read("What's happening at \(c.name)'s table?", material: material,
-                   ask: "Tell the lord what this conversation with \(c.name) is about lately and whether he owes them a reply. Two or three sentences.")
+                   ask: "Tell \(Title.the) what this conversation with \(c.name) is about lately and whether \(Title.they) \(Title.owes) them a reply. Two or three sentences.")
     }
     private func openAgent(_ n: AgentNode) async {
         busyRow = n.id
@@ -268,12 +268,12 @@ struct DialogueView: View {
         let full = n
         let material = "\(full.name) (\(full.source ?? "agent") on \(full.host?.uppercased() ?? "?"), model \(full.model ?? "?"), folder \(full.where ?? "?"), \(full.busy ? "working now" : full.status ?? "done"), \(full.tool_calls ?? 0) tool calls)\n" + (full.detail ?? []).joined(separator: "\n")
         convo.read("What's \(n.name) up to?", material: material,
-                   ask: "Tell the lord, plainly, what this artificer (an AI agent) is working on and how far along it is. Two or three sentences.")
+                   ask: "Tell \(Title.the), plainly, what this artificer (an AI agent) is working on and how far along it is. Two or three sentences.")
     }
     private func readEvent(_ e: Event) {
         tab = 0
         convo.read("Tell me about \u{201C}\(e.title)\u{201D}", material: "\(e.title)\nWhen: \(When.event(e))\nWhere: \(e.location ?? "not given")",
-                   ask: "Remind the lord about this in your own words, with the exact time.")
+                   ask: "Remind \(Title.the) about this in your own words, with the exact time.")
     }
 }
 
